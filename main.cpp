@@ -14,6 +14,13 @@
 const CLSID CLSID_MSOLAP =
 { 0xDBC724B0, 0xDD86, 0x4772, { 0xBB, 0x5A, 0xFC, 0xC6, 0xCA, 0xB2, 0xFC, 0x1A } };
 
+// Structure for column data when using variants
+struct COLUMNDATA {
+    DBSTATUS dwStatus;
+    DBLENGTH dwLength;
+    VARIANT  var;
+};
+
 // Helper function to convert HRESULT to readable error message
 std::wstring GetErrorMessage(HRESULT hr) {
     _com_error err(hr);
@@ -23,64 +30,35 @@ std::wstring GetErrorMessage(HRESULT hr) {
 // Helper function to convert DBTYPE to string for debugging
 std::wstring DBTypeToString(DBTYPE type) {
     switch (type) {
-    case DBTYPE_EMPTY:
-        return L"EMPTY";
-    case DBTYPE_NULL:
-        return L"NULL";
-    case DBTYPE_I2:
-        return L"I2";
-    case DBTYPE_I4:
-        return L"I4";
-    case DBTYPE_R4:
-        return L"R4";
-    case DBTYPE_R8:
-        return L"R8";
-    case DBTYPE_CY:
-        return L"CY";
-    case DBTYPE_DATE:
-        return L"DATE";
-    case DBTYPE_BSTR:
-        return L"BSTR";
-    case DBTYPE_ERROR:
-        return L"ERROR";
-    case DBTYPE_BOOL:
-        return L"BOOL";
-    case DBTYPE_VARIANT:
-        return L"VARIANT";
-    case DBTYPE_DECIMAL:
-        return L"DECIMAL";
-    case DBTYPE_I1:
-        return L"I1";
-    case DBTYPE_UI1:
-        return L"UI1";
-    case DBTYPE_UI2:
-        return L"UI2";
-    case DBTYPE_UI4:
-        return L"UI4";
-    case DBTYPE_I8:
-        return L"I8";
-    case DBTYPE_UI8:
-        return L"UI8";
-    case DBTYPE_GUID:
-        return L"GUID";
-    case DBTYPE_BYTES:
-        return L"BYTES";
-    case DBTYPE_STR:
-        return L"STR";
-    case DBTYPE_WSTR:
-        return L"WSTR";
-    case DBTYPE_NUMERIC:
-        return L"NUMERIC";
-    case DBTYPE_UDT:
-        return L"UDT";
-    case DBTYPE_DBDATE:
-        return L"DBDATE";
-    case DBTYPE_DBTIME:
-        return L"DBTIME";
-    case DBTYPE_DBTIMESTAMP:
-        return L"DBTIMESTAMP";
-    default:
-        return L"UNKNOWN(" + std::to_wstring(type) + L")";
+    case DBTYPE_EMPTY: return L"EMPTY";
+    case DBTYPE_NULL: return L"NULL";
+    case DBTYPE_I2: return L"I2";
+    case DBTYPE_I4: return L"I4";
+    case DBTYPE_R4: return L"R4";
+    case DBTYPE_R8: return L"R8";
+    case DBTYPE_CY: return L"CY";
+    case DBTYPE_DATE: return L"DATE";
+    case DBTYPE_BSTR: return L"BSTR";
+    case DBTYPE_ERROR: return L"ERROR";
+    case DBTYPE_BOOL: return L"BOOL";
+    case DBTYPE_VARIANT: return L"VARIANT";
+    case DBTYPE_DECIMAL: return L"DECIMAL";
+    case DBTYPE_I1: return L"I1";
+    case DBTYPE_UI1: return L"UI1";
+    case DBTYPE_UI2: return L"UI2";
+    case DBTYPE_UI4: return L"UI4";
+    case DBTYPE_I8: return L"I8";
+    case DBTYPE_UI8: return L"UI8";
+    case DBTYPE_GUID: return L"GUID";
+    case DBTYPE_BYTES: return L"BYTES";
+    case DBTYPE_STR: return L"STR";
+    case DBTYPE_WSTR: return L"WSTR";
+    case DBTYPE_NUMERIC: return L"NUMERIC";
+    case DBTYPE_UDT: return L"UDT";
+    case DBTYPE_DBDATE: return L"DBDATE";
+    case DBTYPE_DBTIME: return L"DBTIME";
+    case DBTYPE_DBTIMESTAMP: return L"DBTIMESTAMP";
+    default: return L"UNKNOWN(" + std::to_wstring(type) + L")";
     }
 }
 
@@ -103,19 +81,16 @@ int main()
     }
 
     // Connection parameters
-    std::wstring serverName, databaseName, connectionString;
+    std::wstring serverName, databaseName;
 
     // Get user input for connection parameters
     std::wcout << L"Enter server name (default: localhost): ";
     std::getline(std::wcin, serverName);
-    if (serverName.empty()) serverName = L"localhost:63521";
+    if (serverName.empty()) serverName = L"localhost:53940";
 
-    std::wcout << L"Enter database/cube name (default: d3ecf514-bab5-4ad9-92e2-4e8dafdd3082): ";
+    std::wcout << L"Enter database/cube name (default: eee3df03-7e86-43e6-b29e-b667e6e97ea7): ";
     std::getline(std::wcin, databaseName);
-    if (databaseName.empty()) databaseName = L"d3ecf514-bab5-4ad9-92e2-4e8dafdd3082";
-
-    // Build connection string
-    connectionString = L"Provider=MSOLAP;Data Source=" + serverName + L";Initial Catalog=" + databaseName + L";Format=Tabular;";
+    if (databaseName.empty()) databaseName = L"eee3df03-7e86-43e6-b29e-b667e6e97ea7";
 
     // Create data source
     IDBInitialize* pIDBInitialize = NULL;
@@ -141,7 +116,7 @@ int main()
     }
 
     // Set the properties for the connection
-    DBPROP dbProps[3]; // Increased to 3 to add Format=Tabular
+    DBPROP dbProps[3];
     DBPROPSET dbPropSet;
 
     // Initialize the property structures
@@ -159,7 +134,7 @@ int main()
     dbProps[1].vValue.vt = VT_BSTR;
     dbProps[1].vValue.bstrVal = SysAllocString(databaseName.c_str());
 
-    // Set the Format property to Tabular
+    // Set the Mode property to read-only
     dbProps[2].dwPropertyID = DBPROP_INIT_MODE;
     dbProps[2].dwOptions = DBPROPOPTIONS_REQUIRED;
     dbProps[2].vValue.vt = VT_I4;
@@ -231,7 +206,6 @@ int main()
         }
 
         if (daxQuery.empty()) {
-            // Use a default query if none provided
             daxQuery = L"EVALUATE ROW(\"Example\", 123)";
             std::wcout << L"Using default query: " << daxQuery << std::endl;
         }
@@ -253,7 +227,6 @@ int main()
             continue;
         }
 
-        // Use DBGUID_DEFAULT instead of DBGUID_DAX - this is the key change!
         hr = pICommandText->SetCommandText(DBGUID_DEFAULT, daxQuery.c_str());
         if (FAILED(hr)) {
             std::wcerr << L"Failed to set command text: " << GetErrorMessage(hr) << std::endl;
@@ -275,7 +248,7 @@ int main()
 
         std::wcout << L"Query executed successfully." << std::endl;
 
-        // Get column information
+        // Get column information using IColumnsInfo
         IColumnsInfo* pIColumnsInfo = NULL;
         hr = pIRowset->QueryInterface(IID_IColumnsInfo, (void**)&pIColumnsInfo);
         if (FAILED(hr)) {
@@ -284,22 +257,22 @@ int main()
             continue;
         }
 
+        // Get column information
         DBORDINAL cColumns;
-        DBCOLUMNINFO* pColumnInfo;
-        OLECHAR* pStringBuffer;
+        WCHAR* pStringsBuffer = NULL;
+        DBCOLUMNINFO* pColumnInfo = NULL;
 
-        hr = pIColumnsInfo->GetColumnInfo(&cColumns, &pColumnInfo, &pStringBuffer);
-        SafeRelease(&pIColumnsInfo);
-
+        hr = pIColumnsInfo->GetColumnInfo(&cColumns, &pColumnInfo, &pStringsBuffer);
         if (FAILED(hr)) {
             std::wcerr << L"Failed to get column info: " << GetErrorMessage(hr) << std::endl;
+            SafeRelease(&pIColumnsInfo);
             SafeRelease(&pIRowset);
             continue;
         }
 
         std::wcout << L"Number of columns: " << cColumns << std::endl;
 
-        // Display column headers and detailed info
+        // Display column headers
         std::wcout << L"\nColumn Information:" << std::endl;
         for (DBORDINAL i = 0; i < cColumns; i++) {
             std::wcout << L"Column " << i << L": ";
@@ -309,9 +282,88 @@ int main()
             else {
                 std::wcout << L"(No Name)";
             }
-            std::wcout << L", Type = " << pColumnInfo[i].wType << std::endl;
+            std::wcout << L", Type = " << DBTypeToString(pColumnInfo[i].wType)
+                << L", Size = " << pColumnInfo[i].ulColumnSize << std::endl;
         }
 
+        // Create bindings
+        DBBINDING* rgBind = (DBBINDING*)CoTaskMemAlloc(cColumns * sizeof(DBBINDING));
+        if (!rgBind) {
+            std::wcerr << L"Failed to allocate memory for bindings" << std::endl;
+            SafeRelease(&pIColumnsInfo);
+            CoTaskMemFree(pColumnInfo);
+            CoTaskMemFree(pStringsBuffer);
+            SafeRelease(&pIRowset);
+            continue;
+        }
+
+        // Set up bindings for all columns
+        DWORD dwOffset = 0;
+        DBCOUNTITEM cBind = 0;
+        
+        for (DBORDINAL i = 0; i < cColumns; i++) {
+            rgBind[i].iOrdinal = pColumnInfo[i].iOrdinal;
+            rgBind[i].obValue = dwOffset + offsetof(COLUMNDATA, var);
+            rgBind[i].obLength = dwOffset + offsetof(COLUMNDATA, dwLength);
+            rgBind[i].obStatus = dwOffset + offsetof(COLUMNDATA, dwStatus);
+            rgBind[i].pTypeInfo = NULL;
+            rgBind[i].pObject = NULL;
+            rgBind[i].pBindExt = NULL;
+            rgBind[i].cbMaxLen = sizeof(VARIANT);
+            rgBind[i].dwFlags = 0;
+            rgBind[i].eParamIO = DBPARAMIO_NOTPARAM;
+            rgBind[i].dwPart = DBPART_VALUE | DBPART_LENGTH | DBPART_STATUS;
+            rgBind[i].dwMemOwner = DBMEMOWNER_CLIENTOWNED;
+            rgBind[i].wType = DBTYPE_VARIANT;
+            rgBind[i].bPrecision = 0;
+            rgBind[i].bScale = 0;
+            
+            // Increment offset to next structure
+            dwOffset += sizeof(COLUMNDATA);
+            cBind++;
+        }
+
+        // Create the accessor
+        HACCESSOR hAccessor;
+        IAccessor* pIAccessor = NULL;
+        hr = pIRowset->QueryInterface(IID_IAccessor, (void**)&pIAccessor);
+        if (FAILED(hr)) {
+            std::wcerr << L"Failed to get IAccessor: " << GetErrorMessage(hr) << std::endl;
+            CoTaskMemFree(rgBind);
+            SafeRelease(&pIColumnsInfo);
+            CoTaskMemFree(pColumnInfo);
+            CoTaskMemFree(pStringsBuffer);
+            SafeRelease(&pIRowset);
+            continue;
+        }
+
+        // Create the accessor
+        hr = pIAccessor->CreateAccessor(
+            DBACCESSOR_ROWDATA,
+            cBind,
+            rgBind,
+            dwOffset,
+            &hAccessor,
+            NULL
+        );
+
+        if (FAILED(hr)) {
+            std::wcerr << L"Failed to create accessor: " << GetErrorMessage(hr) << std::endl;
+            SafeRelease(&pIAccessor);
+            CoTaskMemFree(rgBind);
+            SafeRelease(&pIColumnsInfo);
+            CoTaskMemFree(pColumnInfo);
+            CoTaskMemFree(pStringsBuffer);
+            SafeRelease(&pIRowset);
+            continue;
+        }
+        
+        SafeRelease(&pIColumnsInfo);
+
+        // Allocate buffer for row data
+        BYTE* pRowData = new BYTE[dwOffset];
+        
+        // Display column headers for results
         std::wcout << L"\nResults:\n";
         for (DBORDINAL i = 0; i < cColumns; i++) {
             if (pColumnInfo[i].pwszName) {
@@ -322,164 +374,6 @@ int main()
             }
         }
         std::wcout << std::endl;
-
-        // Create accessors to retrieve data
-        IAccessor* pIAccessor = NULL;
-        hr = pIRowset->QueryInterface(IID_IAccessor, (void**)&pIAccessor);
-        if (FAILED(hr)) {
-            std::wcerr << L"Failed to get IAccessor: " << GetErrorMessage(hr) << std::endl;
-            CoTaskMemFree(pColumnInfo);
-            CoTaskMemFree(pStringBuffer);
-            SafeRelease(&pIRowset);
-            continue;
-        }
-
-        // Create bindings for all columns
-        DBBINDING* rgBindings = new DBBINDING[cColumns];
-        ULONG cbRowSize = 0;
-
-        // Set up the binding structure for all columns
-        DBORDINAL bindColumnCount = 0;
-        for (DBORDINAL i = 0; i < cColumns; i++) {
-            // Skip the problematic Column 4 (Format String)
-            if (i == 4 && cColumns > 4) {
-                std::wcout << L"Skipping binding for column 4 (Format String) due to previous errors." << std::endl;
-                continue;
-            }
-
-            rgBindings[bindColumnCount].iOrdinal = i + 1;  // 1-based
-            rgBindings[bindColumnCount].obValue = cbRowSize;
-
-            // Determine max buffer size based on column type
-            DBLENGTH cbMaxLen;
-            DBTYPE wType;
-
-            // Match the column's native type instead of using VARIANT
-            switch (pColumnInfo[i].wType) {
-            case DBTYPE_WSTR:
-            case DBTYPE_STR:
-            //case 130: // Treat type 130 as string (BSTR-like)
-                // Special case for Currency column (index 3) - use even larger buffer
-                if (i == 3 && cColumns > 4) {
-                    cbMaxLen = 8192; // Extra large buffer for Currency column
-                    std::wcout << "Using extra large buffer for Currency column" << std::endl;
-                }
-                else {
-                    cbMaxLen = 4096; // Large buffer for other strings
-                }
-                wType = DBTYPE_WSTR; // Always bind as wide strings
-                break;
-            case DBTYPE_I8:
-                cbMaxLen = sizeof(LONGLONG);
-                wType = DBTYPE_I8;
-                break;
-            case DBTYPE_I4:
-                cbMaxLen = sizeof(LONG);
-                wType = DBTYPE_I4;
-                break;
-            case DBTYPE_R8:
-                cbMaxLen = sizeof(double);
-                wType = DBTYPE_R8;
-                break;
-            default:
-                // For unknown types, use large string buffer
-                cbMaxLen = 4096;
-                wType = DBTYPE_WSTR;
-                break;
-            }
-
-            rgBindings[bindColumnCount].obLength = cbRowSize + cbMaxLen;
-            rgBindings[bindColumnCount].obStatus = cbRowSize + cbMaxLen + sizeof(ULONG);
-            rgBindings[bindColumnCount].pTypeInfo = NULL;
-            rgBindings[bindColumnCount].pObject = NULL;
-            rgBindings[bindColumnCount].pBindExt = NULL;
-            rgBindings[bindColumnCount].dwPart = DBPART_VALUE | DBPART_LENGTH | DBPART_STATUS;
-            rgBindings[bindColumnCount].dwMemOwner = DBMEMOWNER_CLIENTOWNED;
-            rgBindings[bindColumnCount].dwFlags = 0;
-            rgBindings[bindColumnCount].eParamIO = DBPARAMIO_NOTPARAM;
-            rgBindings[bindColumnCount].cbMaxLen = cbMaxLen;
-            rgBindings[bindColumnCount].wType = wType;
-            rgBindings[bindColumnCount].bPrecision = 0;
-            rgBindings[bindColumnCount].bScale = 0;
-
-            // Update row size for next column
-            cbRowSize += cbMaxLen + sizeof(ULONG) + sizeof(DBSTATUS);
-
-            // Increment our binding counter
-            bindColumnCount++;
-        }
-
-        // Update the actual number of columns we're binding
-        std::wcout << "Binding " << bindColumnCount << " out of " << cColumns << " columns." << std::endl;
-
-        std::wcout << "Binding setup complete. Row size: " << cbRowSize << " bytes." << std::endl;
-
-        // Create the accessor
-        HACCESSOR hAccessor;
-        DBBINDSTATUS* rgBindStatus = new DBBINDSTATUS[bindColumnCount];
-
-        hr = pIAccessor->CreateAccessor(DBACCESSOR_ROWDATA, bindColumnCount, rgBindings,
-            cbRowSize, &hAccessor, rgBindStatus);
-
-        if (FAILED(hr)) {
-            std::wcerr << L"Failed to create accessor: " << GetErrorMessage(hr) << std::endl;
-
-            // Output binding status for debugging
-            std::wcerr << L"Binding status details:" << std::endl;
-            DBORDINAL bindIndex = 0;
-            for (DBORDINAL i = 0; i < cColumns; i++) {
-                // Skip the column we're not binding
-                if (i == 4 && cColumns > 4) {
-                    std::wcerr << L"Column " << i << L" ("
-                        << (pColumnInfo[i].pwszName ? pColumnInfo[i].pwszName : L"(No Name)")
-                        << L"): Not bound" << std::endl;
-                    continue;
-                }
-
-                std::wcerr << L"Column " << i << L" ("
-                    << (pColumnInfo[i].pwszName ? pColumnInfo[i].pwszName : L"(No Name)")
-                    << L"): Status = " << rgBindStatus[bindIndex];
-
-                // Interpret status code
-                switch (rgBindStatus[bindIndex]) {
-                case DBBINDSTATUS_OK:
-                    std::wcerr << L" (OK)";
-                    break;
-                case DBBINDSTATUS_BADORDINAL:
-                    std::wcerr << L" (Bad ordinal)";
-                    break;
-                case DBBINDSTATUS_UNSUPPORTEDCONVERSION:
-                    std::wcerr << L" (Unsupported conversion)";
-                    break;
-                case DBBINDSTATUS_BADBINDINFO:
-                    std::wcerr << L" (Bad bind info)";
-                    break;
-                case DBBINDSTATUS_BADSTORAGEFLAGS:
-                    std::wcerr << L" (Bad storage flags)";
-                    break;
-                case DBBINDSTATUS_NOINTERFACE:
-                    std::wcerr << L" (No interface)";
-                    break;
-                default:
-                    std::wcerr << L" (Unknown error)";
-                }
-                std::wcerr << std::endl;
-                bindIndex++;
-            }
-
-            delete[] rgBindStatus;
-            delete[] rgBindings;
-            SafeRelease(&pIAccessor);
-            CoTaskMemFree(pColumnInfo);
-            CoTaskMemFree(pStringBuffer);
-            SafeRelease(&pIRowset);
-            continue;
-        }
-
-        delete[] rgBindStatus;
-
-        // Allocate buffer for row data
-        BYTE* pData = new BYTE[cbRowSize];
 
         // Fetch and display rows
         HROW hRow;
@@ -492,78 +386,94 @@ int main()
             if (FAILED(hr) || cRowsObtained == 0)
                 break;
 
-            memset(pData, 0, cbRowSize);  // Clear the buffer
+            // Clear the buffer before getting new data
+            memset(pRowData, 0, dwOffset);
 
             // Get the row data
-            hr = pIRowset->GetData(hRow, hAccessor, pData);
+            hr = pIRowset->GetData(hRow, hAccessor, pRowData);
             if (SUCCEEDED(hr)) {
                 rowCount++;
 
-                // Process each column
-                DBORDINAL bindIndex = 0;
+                // Process each column data
                 for (DBORDINAL i = 0; i < cColumns; i++) {
-                    // If this is the column we skipped, output a placeholder
-                    if (i == 4 && cColumns > 4) {
-                        std::wcout << L"[Not Bound]" << L"\t";
-                        continue;
-                    }
-
-                    DBSTATUS status = *(DBSTATUS*)(pData + rgBindings[bindIndex].obStatus);
-
-                    if (status == DBSTATUS_S_OK) {
-                        // Display value based on its type
-                        switch (rgBindings[bindIndex].wType) {
-                        case DBTYPE_WSTR:
-                            std::wcout << (WCHAR*)(pData + rgBindings[bindIndex].obValue);
+                    // Get the COLUMNDATA structure for this column
+                    COLUMNDATA* pColData = (COLUMNDATA*)(pRowData + (i * sizeof(COLUMNDATA)));
+                    
+                    // Check the status
+                    if (pColData->dwStatus == DBSTATUS_S_OK) {
+                        // Display the variant data
+                        VARIANT* pVar = &(pColData->var);
+                        
+                        // Convert and display the variant value
+                        switch (pVar->vt) {
+                        case VT_I2:
+                            std::wcout << pVar->iVal << L"\t";
                             break;
-                        case DBTYPE_I4:
-                            std::wcout << *(LONG*)(pData + rgBindings[bindIndex].obValue);
+                        case VT_I4:
+                            std::wcout << pVar->lVal << L"\t";
                             break;
-                        case DBTYPE_I8:
-                            std::wcout << *(LONGLONG*)(pData + rgBindings[bindIndex].obValue);
+                        case VT_I8:
+                            std::wcout << pVar->llVal << L"\t";
                             break;
-                        case DBTYPE_R8:
-                            std::wcout << *(double*)(pData + rgBindings[bindIndex].obValue);
+                        case VT_R4:
+                            std::wcout << pVar->fltVal << L"\t";
+                            break;
+                        case VT_R8:
+                            std::wcout << pVar->dblVal << L"\t";
+                            break;
+                        case VT_BOOL:
+                            std::wcout << (pVar->boolVal ? L"True" : L"False") << L"\t";
+                            break;
+                        case VT_BSTR:
+                            std::wcout << pVar->bstrVal << L"\t";
+                            break;
+                        case VT_CY:
+                        {
+                            BSTR bstrCY;
+                            VarBstrFromCy(pVar->cyVal, LOCALE_USER_DEFAULT, 0, &bstrCY);
+                            std::wcout << bstrCY << L"\t";
+                            SysFreeString(bstrCY);
+                        }
+                        break;
+                        case VT_DATE:
+                        {
+                            SYSTEMTIME st;
+                            VariantTimeToSystemTime(pVar->date, &st);
+                            WCHAR szDate[64];
+                            GetDateFormatW(LOCALE_USER_DEFAULT, 0, &st, L"yyyy-MM-dd", szDate, 64);
+                            std::wcout << szDate << L"\t";
+                        }
+                        break;
+                        case VT_NULL:
+                            std::wcout << L"NULL\t";
+                            break;
+                        case VT_EMPTY:
+                            std::wcout << L"EMPTY\t";
+                            break;
+                        case VT_UI4:
+                            std::wcout << pVar->ulVal << L"\t";
                             break;
                         default:
-                            std::wcout << L"[Unknown type]";
+                            std::wcout << L"[Unsupported variant type: " << pVar->vt << L"]\t";
                             break;
                         }
                     }
-                    else if (status == DBSTATUS_S_ISNULL) {
-                        std::wcout << L"NULL";
-                    }
-                    else if (status == DBSTATUS_S_TRUNCATED) {
-                        // For truncated data, display what we have with a warning
-                        ULONG actualLength = *(ULONG*)(pData + rgBindings[bindIndex].obLength);
-                        std::wcout << L"[Truncated " << actualLength << L"bytes] ";
-
-                        if (rgBindings[bindIndex].wType == DBTYPE_WSTR) {
-                            // For string data, try to display what we have
-                            std::wcout << (WCHAR*)(pData + rgBindings[bindIndex].obValue);
-
-                            // If this is column 3 (Currency), add extra debugging
-                            if (i == 3) {
-                                std::wcout << L" [Debug: ";
-                                WCHAR* str = (WCHAR*)(pData + rgBindings[bindIndex].obValue);
-                                for (int j = 0; j < 10 && str[j]; j++) {
-                                    std::wcout << L"\\u" << std::hex << (int)str[j] << std::dec;
-                                }
-                                std::wcout << L"]";
-                            }
-                        }
-                        else {
-                            std::wcout << L"[Data]";
-                        }
+                    else if (pColData->dwStatus == DBSTATUS_S_ISNULL) {
+                        std::wcout << L"NULL\t";
                     }
                     else {
-                        std::wcout << L"[Status: " << status << L"]";
+                        std::wcout << L"[Status: " << pColData->dwStatus << L"]\t";
                     }
-
-                    std::wcout << L"\t";
-                    bindIndex++;
                 }
                 std::wcout << std::endl;
+                
+                // Clean up variants to avoid memory leaks
+                for (DBORDINAL i = 0; i < cColumns; i++) {
+                    COLUMNDATA* pColData = (COLUMNDATA*)(pRowData + (i * sizeof(COLUMNDATA)));
+                    if (pColData->dwStatus == DBSTATUS_S_OK) {
+                        VariantClear(&(pColData->var));
+                    }
+                }
             }
             else {
                 std::wcerr << L"Failed to get row data: " << GetErrorMessage(hr) << std::endl;
@@ -576,18 +486,18 @@ int main()
         std::wcout << L"\n" << rowCount << L" row(s) returned." << std::endl;
 
         // Clean up
-        delete[] pData;
-        delete[] rgBindings;
+        delete[] pRowData;
         pIAccessor->ReleaseAccessor(hAccessor, NULL);
         SafeRelease(&pIAccessor);
+        CoTaskMemFree(rgBind);
         CoTaskMemFree(pColumnInfo);
-        CoTaskMemFree(pStringBuffer);
+        CoTaskMemFree(pStringsBuffer);
         SafeRelease(&pIRowset);
     }
 
-    // Clean up
+    // Clean up remaining resources
     SafeRelease(&pIDBCreateCommand);
-
+    
     // Uninitialize the data source
     if (pIDBInitialize) {
         pIDBInitialize->Uninitialize();

@@ -1,52 +1,73 @@
 #pragma once
 
-#include "duckdb.hpp"
-#include "msolap_utils.hpp"
-#include <windows.h>
-#include <oledb.h>
 #include <string>
 #include <vector>
-#include <memory>
+#include <windows.h>
+#include <oledb.h>
+#include "duckdb/common/types.hpp"
+#include "duckdb/common/types/value.hpp"
+#include "duckdb/common/vector.hpp"
 
 namespace duckdb {
 
-// Forward declaration
 class MSOLAPDB;
 
 class MSOLAPStatement {
 public:
+    MSOLAPStatement();
     MSOLAPStatement(MSOLAPDB& db, const std::string& dax_query);
     ~MSOLAPStatement();
-    
+
     // Prevent copying
     MSOLAPStatement(const MSOLAPStatement&) = delete;
     MSOLAPStatement& operator=(const MSOLAPStatement&) = delete;
-    
-    // Execute the statement and prepare for fetching results
+
+    // Allow moving
+    MSOLAPStatement(MSOLAPStatement&& other) noexcept;
+    MSOLAPStatement& operator=(MSOLAPStatement&& other) noexcept;
+
+    // Execute the statement
     bool Execute();
     
-    // Step to the next row
+    // Move to the next row in the result set
+    // Returns true if there is a row, false if no more rows
     bool Step();
     
-    // Get column information
+    // Get the number of columns in the result set
     DBORDINAL GetColumnCount() const;
+    
+    // Get the name of a column
     std::string GetColumnName(DBORDINAL column) const;
+    
+    // Get the type of a column
     DBTYPE GetColumnType(DBORDINAL column) const;
     
-    // Get column values
-    Value GetValue(DBORDINAL column, const LogicalType& type);
-    
-    // Get all column types
+    // Get logical types for all columns
     std::vector<LogicalType> GetColumnTypes() const;
     
-    // Get all column names
+    // Get names for all columns
     std::vector<std::string> GetColumnNames() const;
+    
+    // Get a value from the current row
+    Value GetValue(DBORDINAL column, const LogicalType& type);
     
     // Close the statement
     void Close();
     
+    // Check if the statement is open
+    bool IsOpen() const { return pICommand != nullptr; }
+
 private:
-    // MSOLAP statement objects
+    // Set up column bindings
+    void SetupBindings();
+    
+    // Get value from a variant
+    Value GetVariantValue(VARIANT* var, const LogicalType& type);
+    
+    // Free resources
+    void FreeResources();
+
+    // Command object and related interfaces
     ICommand* pICommand;
     ICommandText* pICommandText;
     IRowset* pIRowset;
@@ -57,19 +78,21 @@ private:
     WCHAR* pStringsBuffer;
     DBORDINAL cColumns;
     
-    // Row handling
+    // Accessor handle
     HACCESSOR hAccessor;
+    
+    // Current row handle
     HROW hRow;
-    std::vector<DBBINDING> bindings;
+    
+    // Row data buffer
     BYTE* pRowData;
+    
+    // Bindings for columns
+    std::vector<DBBINDING> bindings;
+    
+    // State tracking
     bool has_row;
     bool executed;
-    
-    // Setup column bindings
-    void SetupBindings();
-    
-    // Free resources
-    void FreeResources();
 };
 
 } // namespace duckdb

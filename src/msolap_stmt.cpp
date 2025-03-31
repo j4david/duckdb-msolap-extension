@@ -4,6 +4,21 @@
 
 namespace duckdb {
 
+MSOLAPStatement::MSOLAPStatement()
+    : pICommand(nullptr),
+      pICommandText(nullptr),
+      pIRowset(nullptr),
+      pIAccessor(nullptr),
+      pColumnInfo(nullptr),
+      pStringsBuffer(nullptr),
+      cColumns(0),
+      hAccessor(NULL),
+      hRow(NULL),
+      pRowData(nullptr),
+      has_row(false),
+      executed(false) {
+}
+
 MSOLAPStatement::MSOLAPStatement(MSOLAPDB& db, const std::string& dax_query)
     : pICommand(nullptr),
       pICommandText(nullptr),
@@ -29,19 +44,43 @@ MSOLAPStatement::MSOLAPStatement(MSOLAPDB& db, const std::string& dax_query)
     // Get the ICommandText interface
     hr = pICommand->QueryInterface(IID_ICommandText, (void**)&pICommandText);
     if (FAILED(hr)) {
-        SafeRelease(&pICommand);
+        ::SafeRelease(&pICommand);
         throw MSOLAPException(hr, "Failed to get ICommandText interface");
     }
     
     // Set the command text
     BSTR bstrQuery = StringToBSTR(dax_query);
     hr = pICommandText->SetCommandText(DBGUID_DEFAULT, bstrQuery);
-    SysFreeString(bstrQuery);
+    ::SysFreeString(bstrQuery);
     
     if (FAILED(hr)) {
-        SafeRelease(&pICommandText);
-        SafeRelease(&pICommand);
+        ::SafeRelease(&pICommandText);
+        ::SafeRelease(&pICommand);
         throw MSOLAPException(hr, "Failed to set command text");
+    }
+    
+    // Set command timeout property if available
+    ICommandProperties* pICommandProperties = NULL;
+    hr = pICommand->QueryInterface(IID_ICommandProperties, (void**)&pICommandProperties);
+    if (SUCCEEDED(hr)) {
+        DBPROP prop;
+        DBPROPSET propset;
+        
+        // Initialize the property
+        prop.dwPropertyID = DBPROP_COMMANDTIMEOUT;
+        prop.dwOptions = DBPROPOPTIONS_REQUIRED;
+        prop.vValue.vt = VT_I4;
+        prop.vValue.lVal = db.timeout_seconds;
+        prop.colid = DB_NULLID;
+        
+        // Initialize the property set
+        propset.guidPropertySet = DBPROPSET_ROWSET;
+        propset.cProperties = 1;
+        propset.rgProperties = &prop;
+        
+        // Set the property
+        pICommandProperties->SetProperties(1, &propset);
+        ::SafeRelease(&pICommandProperties);
     }
 }
 
@@ -49,6 +88,72 @@ MSOLAPStatement::~MSOLAPStatement() {
     Close();
 }
 
+MSOLAPStatement::MSOLAPStatement(MSOLAPStatement&& other) noexcept
+    : pICommand(other.pICommand),
+      pICommandText(other.pICommandText),
+      pIRowset(other.pIRowset),
+      pIAccessor(other.pIAccessor),
+      pColumnInfo(other.pColumnInfo),
+      pStringsBuffer(other.pStringsBuffer),
+      cColumns(other.cColumns),
+      hAccessor(other.hAccessor),
+      hRow(other.hRow),
+      pRowData(other.pRowData),
+      bindings(std::move(other.bindings)),
+      has_row(other.has_row),
+      executed(other.executed) {
+      
+    // Clear the moved-from object's state
+    other.pICommand = nullptr;
+    other.pICommandText = nullptr;
+    other.pIRowset = nullptr;
+    other.pIAccessor = nullptr;
+    other.pColumnInfo = nullptr;
+    other.pStringsBuffer = nullptr;
+    other.cColumns = 0;
+    other.hAccessor = NULL;
+    other.hRow = NULL;
+    other.pRowData = nullptr;
+    other.has_row = false;
+    other.executed = false;
+}
+
+MSOLAPStatement& MSOLAPStatement::operator=(MSOLAPStatement&& other) noexcept {
+    if (this != &other) {
+        // Clean up existing resources
+        Close();
+        
+        // Move resources from other
+        pICommand = other.pICommand;
+        pICommandText = other.pICommandText;
+        pIRowset = other.pIRowset;
+        pIAccessor = other.pIAccessor;
+        pColumnInfo = other.pColumnInfo;
+        pStringsBuffer = other.pStringsBuffer;
+        cColumns = other.cColumns;
+        hAccessor = other.hAccessor;
+        hRow = other.hRow;
+        pRowData = other.pRowData;
+        bindings = std::move(other.bindings);
+        has_row = other.has_row;
+        executed = other.executed;
+        
+        // Clear the moved-from object's state
+        other.pICommand = nullptr;
+        other.pICommandText = nullptr;
+        other.pIRowset = nullptr;
+        other.pIAccessor = nullptr;
+        other.pColumnInfo = nullptr;
+        other.pStringsBuffer = nullptr;
+        other.cColumns = 0;
+        other.hAccessor = NULL;
+        other.hRow = NULL;
+        other.pRowData = nullptr;
+        other.has_row = false;
+        other.executed = false;
+    }
+    return *this;
+}
 void MSOLAPStatement::SetupBindings() {
     if (cColumns == 0) {
         return;
@@ -57,32 +162,31 @@ void MSOLAPStatement::SetupBindings() {
     // Create bindings for each column
     bindings.resize(cColumns);
     
-    DBBINDING* pBinding = bindings.data();
     DBLENGTH dwOffset = 0;
     
     for (DBORDINAL i = 0; i < cColumns; i++) {
         // Initialize binding
-        pBinding[i].iOrdinal = i + 1; // 1-based column ordinals
-        pBinding[i].dwPart = DBPART_VALUE | DBPART_LENGTH | DBPART_STATUS;
-        pBinding[i].dwMemOwner = DBMEMOWNER_CLIENTOWNED;
-        pBinding[i].eParamIO = DBPARAMIO_NOTPARAM;
-        pBinding[i].cbMaxLen = sizeof(VARIANT);
-        pBinding[i].dwFlags = 0;
-        pBinding[i].wType = DBTYPE_VARIANT;
-        pBinding[i].pTypeInfo = NULL;
-        pBinding[i].pObject = NULL;
-        pBinding[i].pBindExt = NULL;
+        bindings[i].iOrdinal = i + 1; // 1-based column ordinals
+        bindings[i].dwPart = DBPART_VALUE | DBPART_LENGTH | DBPART_STATUS;
+        bindings[i].dwMemOwner = DBMEMOWNER_CLIENTOWNED;
+        bindings[i].eParamIO = DBPARAMIO_NOTPARAM;
+        bindings[i].cbMaxLen = sizeof(VARIANT);
+        bindings[i].dwFlags = 0;
+        bindings[i].wType = DBTYPE_VARIANT;
+        bindings[i].pTypeInfo = NULL;
+        bindings[i].pObject = NULL;
+        bindings[i].pBindExt = NULL;
         
         // Set offset for status
-        pBinding[i].obStatus = dwOffset;
+        bindings[i].obStatus = dwOffset;
         dwOffset += sizeof(DBSTATUS);
         
         // Set offset for length
-        pBinding[i].obLength = dwOffset;
+        bindings[i].obLength = dwOffset;
         dwOffset += sizeof(DBLENGTH);
         
         // Set offset for value
-        pBinding[i].obValue = dwOffset;
+        bindings[i].obValue = dwOffset;
         dwOffset += sizeof(VARIANT);
     }
     
@@ -112,30 +216,6 @@ bool MSOLAPStatement::Execute() {
     
     HRESULT hr;
     
-    // Set properties for the command
-    DBPROP rgProps[1];
-    DBPROPSET rgPropSets[1];
-    
-    // Initialize the property structure
-    rgProps[0].dwPropertyID = DBPROP_COMMANDTIMEOUT;
-    rgProps[0].dwOptions = DBPROPOPTIONS_REQUIRED;
-    rgProps[0].vValue.vt = VT_I4;
-    rgProps[0].vValue.lVal = 60; // 60 seconds timeout
-    rgProps[0].colid = DB_NULLID;
-    
-    // Initialize the property set structure
-    rgPropSets[0].guidPropertySet = DBPROPSET_ROWSET;
-    rgPropSets[0].cProperties = 1;
-    rgPropSets[0].rgProperties = rgProps;
-    
-    // Set the properties
-    ICommandProperties* pICommandProperties = NULL;
-    hr = pICommand->QueryInterface(IID_ICommandProperties, (void**)&pICommandProperties);
-    if (SUCCEEDED(hr)) {
-        hr = pICommandProperties->SetProperties(1, rgPropSets);
-        SafeRelease(&pICommandProperties);
-    }
-    
     // Execute the command
     hr = pICommand->Execute(NULL, IID_IRowset, NULL, NULL, (IUnknown**)&pIRowset);
     if (FAILED(hr)) {
@@ -146,22 +226,22 @@ bool MSOLAPStatement::Execute() {
     IColumnsInfo* pIColumnsInfo = NULL;
     hr = pIRowset->QueryInterface(IID_IColumnsInfo, (void**)&pIColumnsInfo);
     if (FAILED(hr)) {
-        SafeRelease(&pIRowset);
+        ::SafeRelease(&pIRowset);
         throw MSOLAPException(hr, "Failed to get IColumnsInfo interface");
     }
     
     hr = pIColumnsInfo->GetColumnInfo(&cColumns, &pColumnInfo, &pStringsBuffer);
-    SafeRelease(&pIColumnsInfo);
+    ::SafeRelease(&pIColumnsInfo);
     
     if (FAILED(hr)) {
-        SafeRelease(&pIRowset);
+        ::SafeRelease(&pIRowset);
         throw MSOLAPException(hr, "Failed to get column info");
     }
     
     // Get the IAccessor interface
     hr = pIRowset->QueryInterface(IID_IAccessor, (void**)&pIAccessor);
     if (FAILED(hr)) {
-        SafeRelease(&pIRowset);
+        ::SafeRelease(&pIRowset);
         throw MSOLAPException(hr, "Failed to get IAccessor interface");
     }
     
@@ -174,7 +254,7 @@ bool MSOLAPStatement::Execute() {
 
 bool MSOLAPStatement::Step() {
     if (!executed) {
-        throw MSOLAPException("Statement not executed");
+        Execute();
     }
     
     if (has_row) {
@@ -186,8 +266,9 @@ bool MSOLAPStatement::Step() {
     HRESULT hr;
     DBCOUNTITEM cRowsObtained = 0;
     
-    // Get the next row
-    hr = pIRowset->GetNextRows(DB_NULL_HCHAPTER, 0, 1, &cRowsObtained, &hRow);
+    // Get the next row - using double indirection with an array of HROWs
+    HROW* phRows = &hRow; // array of one HROW
+    hr = pIRowset->GetNextRows(DB_NULL_HCHAPTER, 0, 1, &cRowsObtained, &phRows);
     
     if (hr == DB_S_ENDOFROWSET || cRowsObtained == 0) {
         // No more rows
@@ -197,6 +278,8 @@ bool MSOLAPStatement::Step() {
     if (FAILED(hr)) {
         throw MSOLAPException(hr, "Failed to get next row");
     }
+    
+    // GetNextRows will always set hRow since we're using phRows = &hRow
     
     // Get the data for the row
     hr = pIRowset->GetData(hRow, hAccessor, pRowData);
@@ -313,10 +396,10 @@ Value MSOLAPStatement::GetVariantValue(VARIANT* var, const LogicalType& type) {
 void MSOLAPStatement::Close() {
     FreeResources();
     
-    SafeRelease(&pIAccessor);
-    SafeRelease(&pIRowset);
-    SafeRelease(&pICommandText);
-    SafeRelease(&pICommand);
+    ::SafeRelease(&pIAccessor);
+    ::SafeRelease(&pIRowset);
+    ::SafeRelease(&pICommandText);
+    ::SafeRelease(&pICommand);
     
     has_row = false;
     executed = false;
@@ -349,3 +432,7 @@ void MSOLAPStatement::FreeResources() {
     }
     
     cColumns = 0;
+    bindings.clear();
+}
+
+} // namespace duckdb

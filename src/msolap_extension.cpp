@@ -1,41 +1,49 @@
+#define DUCKDB_EXTENSION_MAIN
+
 #include "msolap_extension.hpp"
 #include "msolap_scanner.hpp"
+#include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 
 namespace duckdb {
 
-void MSOLAPExtension::Load(DuckDB& db) {
-    Connection con(db);
-    con.BeginTransaction();
-    
+static void LoadInternal(DatabaseInstance &instance) {
     // Register MSOLAP table function
-    auto msolap_scan_fun = make_uniq<MSOLAPScanFunction>();
-    ExtensionUtil::RegisterFunction(*con.context, std::move(msolap_scan_fun));
-    
-    con.Commit();
+    MSOLAPScanFunction msolap_scan_fun;
+    ExtensionUtil::RegisterFunction(instance, msolap_scan_fun);
+}
+
+void MSOLAPExtension::Load(DuckDB &db) {
+    LoadInternal(*db.instance);
 }
 
 std::string MSOLAPExtension::Name() {
     return "msolap";
 }
 
-extern "C" {
-
-DUCKDB_EXTENSION_API void msolap_init(duckdb::DatabaseInstance& db) {
-    LoadInternal(db);
-}
-
-DUCKDB_EXTENSION_API const char* msolap_version() {
-    return DuckDB::LibraryVersion();
-}
-
-}
-
-void LoadInternal(DatabaseInstance& instance) {
-    auto& db = *instance.db;
-    MSOLAPExtension extension;
-    extension.Load(db);
-    db.extension_manager->AddExtension(&extension);
+std::string MSOLAPExtension::Version() const {
+#ifdef EXT_VERSION_MSOLAP
+    return EXT_VERSION_MSOLAP;
+#else
+    return "";
+#endif
 }
 
 } // namespace duckdb
+
+extern "C" {
+
+DUCKDB_EXTENSION_API void msolap_init(duckdb::DatabaseInstance &db) {
+    duckdb::DuckDB db_wrapper(db);
+    db_wrapper.LoadExtension<duckdb::MSOLAPExtension>();
+}
+
+DUCKDB_EXTENSION_API const char *msolap_version() {
+    return duckdb::DuckDB::LibraryVersion();
+}
+
+}
+
+#ifndef DUCKDB_EXTENSION_MAIN
+#error DUCKDB_EXTENSION_MAIN not defined
+#endif

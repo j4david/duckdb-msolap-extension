@@ -5,8 +5,20 @@ namespace duckdb {
 
 std::string GetErrorMessage(HRESULT hr) {
     _com_error err(hr);
-    std::wstring wstr = err.ErrorMessage();
-    return std::string(wstr.begin(), wstr.end());
+    LPCTSTR errMsg = err.ErrorMessage();
+    
+    // Convert from TCHAR to std::string
+    #ifdef UNICODE
+    size_t size = wcslen(errMsg) + 1;
+    char* buffer = new char[size];
+    size_t convertedSize;
+    wcstombs_s(&convertedSize, buffer, size, errMsg, size);
+    std::string result(buffer);
+    delete[] buffer;
+    return result;
+    #else
+    return std::string(errMsg);
+    #endif
 }
 
 std::string BSTRToString(BSTR bstr) {
@@ -15,14 +27,21 @@ std::string BSTRToString(BSTR bstr) {
     }
     
     // Convert BSTR to std::string
-    std::wstring wstr(bstr);
-    return std::string(wstr.begin(), wstr.end());
+    int wslen = ::SysStringLen(bstr);
+    int len = ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, NULL, 0, NULL, NULL);
+    
+    std::string result(len, 0);
+    ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, &result[0], len, NULL, NULL);
+    
+    return result;
 }
 
 BSTR StringToBSTR(const std::string& str) {
     // Convert std::string to BSTR
-    std::wstring wstr(str.begin(), str.end());
-    return SysAllocString(wstr.c_str());
+    int wslen = ::MultiByteToWideChar(CP_ACP, 0, str.c_str(), str.length(), NULL, 0);
+    BSTR wsdata = ::SysAllocStringLen(NULL, wslen);
+    ::MultiByteToWideChar(CP_ACP, 0, str.c_str(), str.length(), wsdata, wslen);
+    return wsdata;
 }
 
 int64_t ConvertVariantToInt64(VARIANT* var) {
@@ -160,7 +179,7 @@ string_t ConvertVariantToString(VARIANT* var, Vector& result_vector) {
             SYSTEMTIME sysTime;
             VariantTimeToSystemTime(var->date, &sysTime);
             char buffer[128];
-            sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d", 
+            sprintf_s(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d", 
                     sysTime.wYear, sysTime.wMonth, sysTime.wDay,
                     sysTime.wHour, sysTime.wMinute, sysTime.wSecond);
             result = buffer;
@@ -183,10 +202,24 @@ timestamp_t ConvertVariantToTimestamp(VARIANT* var) {
     SYSTEMTIME sysTime;
     VariantTimeToSystemTime(var->date, &sysTime);
     
-    date_t date(sysTime.wYear, sysTime.wMonth, sysTime.wDay);
-    dtime_t time(sysTime.wHour, sysTime.wMinute, sysTime.wSecond, 0);
+    // Use DuckDB's date/time constructors 
+    int32_t year = sysTime.wYear;
+    int32_t month = sysTime.wMonth;
+    int32_t day = sysTime.wDay;
+    int32_t hour = sysTime.wHour;
+    int32_t minute = sysTime.wMinute;
+    int32_t second = sysTime.wSecond;
+    int32_t microsecond = 0;
     
-    return timestamp_t(date, time);
+    date_t date = Date::FromDate(year, month, day);
+    
+    // Create time struct directly without using constructor with 4 arguments
+    dtime_t time = dtime_t(hour * Interval::MICROS_PER_HOUR + 
+                           minute * Interval::MICROS_PER_MINUTE + 
+                           second * Interval::MICROS_PER_SEC +
+                           microsecond);
+    
+    return Timestamp::FromDatetime(date, time);
 }
 
 bool ConvertVariantToBool(VARIANT* var) {

@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.5)
 
 set(TARGET_NAME msolap)
 
+# Set C++ standard (requirement for <optional>)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_compile_options(/std:c++17)
+
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 

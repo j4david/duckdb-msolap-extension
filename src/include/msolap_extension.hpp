@@ -10,6 +10,7 @@ public:
     void Load(DuckDB& db) override;
     // Return the name of the extension
     std::string Name() override;
+    std::string Version() const override;
 };
 
 } // namespace duckdb

@@ -10,20 +10,65 @@ MSOLAPDB::MSOLAPDB()
       pIDBCreateSession(nullptr),
       pIDBCreateCommand(nullptr),
       pICommand(nullptr),
-      connected(false) {
+      connected(false),
+      timeout_seconds(60) {
 }
 
 MSOLAPDB::~MSOLAPDB() {
     Close();
 }
 
-MSOLAPDB MSOLAPDB::Open(const std::string& connection_string) {
+MSOLAPDB::MSOLAPDB(MSOLAPDB &&other) noexcept
+    : com_initializer(std::move(other.com_initializer)),
+      pIDBInitialize(other.pIDBInitialize),
+      pIDBCreateSession(other.pIDBCreateSession),
+      pIDBCreateCommand(other.pIDBCreateCommand),
+      pICommand(other.pICommand),
+      connected(other.connected),
+      timeout_seconds(other.timeout_seconds) {
+    
+    // Clear the moved-from object's pointers
+    other.pIDBInitialize = nullptr;
+    other.pIDBCreateSession = nullptr;
+    other.pIDBCreateCommand = nullptr;
+    other.pICommand = nullptr;
+    other.connected = false;
+}
+
+MSOLAPDB &MSOLAPDB::operator=(MSOLAPDB &&other) noexcept {
+    if (this != &other) {
+        // Clean up existing resources
+        Close();
+        
+        // Move resources from other
+        com_initializer = std::move(other.com_initializer);
+        pIDBInitialize = other.pIDBInitialize;
+        pIDBCreateSession = other.pIDBCreateSession;
+        pIDBCreateCommand = other.pIDBCreateCommand;
+        pICommand = other.pICommand;
+        connected = other.connected;
+        timeout_seconds = other.timeout_seconds;
+        
+        // Clear the moved-from object's pointers
+        other.pIDBInitialize = nullptr;
+        other.pIDBCreateSession = nullptr;
+        other.pIDBCreateCommand = nullptr;
+        other.pICommand = nullptr;
+        other.connected = false;
+    }
+    return *this;
+}
+
+MSOLAPDB MSOLAPDB::Open(const std::string& connection_string, const MSOLAPOpenOptions &options) {
     MSOLAPDB db;
-    db.Initialize(connection_string);
+    db.Initialize(connection_string, options);
     return db;
 }
 
-void MSOLAPDB::Initialize(const std::string& connection_string) {
+void MSOLAPDB::Initialize(const std::string& connection_string, const MSOLAPOpenOptions &options) {
+    // Store timeout setting
+    this->timeout_seconds = options.timeout_seconds;
+    
     // Create COM initializer
     com_initializer = std::make_unique<COMInitializer>();
     if (!com_initializer->IsInitialized()) {
@@ -35,7 +80,7 @@ void MSOLAPDB::Initialize(const std::string& connection_string) {
     // Create OLEDB Data Source Object
     IDBProperties* pIDBProperties = NULL;
     
-    hr = CoCreateInstance(CLSID_MSOLAP, NULL, CLSCTX_INPROC_SERVER, 
+    hr = ::CoCreateInstance(CLSID_MSOLAP, NULL, CLSCTX_INPROC_SERVER, 
                          IID_IDBInitialize, (void**)&pIDBInitialize);
     if (FAILED(hr)) {
         throw MSOLAPException(hr, "Failed to create MSOLAP instance");
@@ -44,7 +89,7 @@ void MSOLAPDB::Initialize(const std::string& connection_string) {
     // Get the IDBProperties interface
     hr = pIDBInitialize->QueryInterface(IID_IDBProperties, (void**)&pIDBProperties);
     if (FAILED(hr)) {
-        SafeRelease(&pIDBInitialize);
+        ::SafeRelease(&pIDBInitialize);
         throw MSOLAPException(hr, "Failed to get IDBProperties interface");
     }
     
@@ -68,51 +113,51 @@ void MSOLAPDB::Initialize(const std::string& connection_string) {
     hr = pIDBProperties->SetProperties(1, rgPropSets);
     
     // Free the BSTR
-    SysFreeString(rgProps[0].vValue.bstrVal);
+    ::SysFreeString(rgProps[0].vValue.bstrVal);
     
     // Release the IDBProperties interface
-    SafeRelease(&pIDBProperties);
+    ::SafeRelease(&pIDBProperties);
     
     if (FAILED(hr)) {
-        SafeRelease(&pIDBInitialize);
+        ::SafeRelease(&pIDBInitialize);
         throw MSOLAPException(hr, "Failed to set connection properties");
     }
     
     // Initialize the data source
     hr = pIDBInitialize->Initialize();
     if (FAILED(hr)) {
-        SafeRelease(&pIDBInitialize);
+        ::SafeRelease(&pIDBInitialize);
         throw MSOLAPException(hr, "Failed to initialize data source");
     }
     
     // Get the IDBCreateSession interface
     hr = pIDBInitialize->QueryInterface(IID_IDBCreateSession, (void**)&pIDBCreateSession);
     if (FAILED(hr)) {
-        SafeRelease(&pIDBInitialize);
+        ::SafeRelease(&pIDBInitialize);
         throw MSOLAPException(hr, "Failed to get IDBCreateSession interface");
     }
     
     // Create a session
-    IDBCreateCommand* pIDBCreateCommand = NULL;
-    hr = pIDBCreateSession->CreateSession(NULL, IID_IDBCreateCommand, (IUnknown**)&pIDBCreateCommand);
+    IDBCreateCommand* pTempCreateCommand = NULL;
+    hr = pIDBCreateSession->CreateSession(NULL, IID_IDBCreateCommand, (IUnknown**)&pTempCreateCommand);
     if (FAILED(hr)) {
-        SafeRelease(&pIDBCreateSession);
-        SafeRelease(&pIDBInitialize);
+        ::SafeRelease(&pIDBCreateSession);
+        ::SafeRelease(&pIDBInitialize);
         throw MSOLAPException(hr, "Failed to create session");
     }
     
-    this->pIDBCreateCommand = pIDBCreateCommand;
+    pIDBCreateCommand = pTempCreateCommand;
     connected = true;
 }
 
 void MSOLAPDB::Close() {
-    SafeRelease(&pICommand);
-    SafeRelease(&pIDBCreateCommand);
-    SafeRelease(&pIDBCreateSession);
+    ::SafeRelease(&pICommand);
+    ::SafeRelease(&pIDBCreateCommand);
+    ::SafeRelease(&pIDBCreateSession);
     
     if (pIDBInitialize) {
         pIDBInitialize->Uninitialize();
-        SafeRelease(&pIDBInitialize);
+        ::SafeRelease(&pIDBInitialize);
     }
     
     connected = false;
@@ -124,6 +169,11 @@ MSOLAPStatement MSOLAPDB::Prepare(const std::string& dax_query) {
     }
     
     return MSOLAPStatement(*this, dax_query);
+}
+
+void MSOLAPDB::Execute(const std::string& dax_query) {
+    auto stmt = Prepare(dax_query);
+    stmt.Execute();
 }
 
 bool MSOLAPDB::IsConnected() const {

@@ -191,7 +191,7 @@ void MSOLAPStatement::SetupBindings() {
         DBACCESSOR_ROWDATA,
         cColumns,
         bindings.data(),
-        dwOffset,  // Pass total buffer size
+        dwOffset,
         &hAccessor,
         NULL);
     

@@ -2,5 +2,6 @@
     "files.associations": {
         "*.ejs": "html",
         "vector": "cpp"
-    }
+    },
+    "makefile.configureOnOpen": true
 }

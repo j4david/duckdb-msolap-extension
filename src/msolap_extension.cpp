@@ -15,10 +15,6 @@ void MSOLAPExtension::Load(DuckDB& db) {
     con.Commit();
 }
 
-void MSOLAPExtension::Unload(DuckDB& db) {
-    // Nothing to clean up
-}
-
 std::string MSOLAPExtension::Name() {
     return "msolap";
 }

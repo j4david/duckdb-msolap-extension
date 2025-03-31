@@ -1,12 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-# Set extension name here
-set(TARGET_NAME quack)
-
-# DuckDB's extension distribution supports vcpkg. As such, dependencies can be added in ./vcpkg.json and then
-# used in cmake with find_package. Feel free to remove or replace with other dependencies.
-# Note that it should also be removed from vcpkg.json to prevent needlessly installing it..
-find_package(OpenSSL REQUIRED)
+set(TARGET_NAME msolap)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
@@ -14,14 +8,26 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 project(${TARGET_NAME})
 include_directories(src/include)
 
-set(EXTENSION_SOURCES src/quack_extension.cpp)
+# Add COM/OLE DB dependencies for Windows
+if(WIN32)
+  set(COM_LIBS ole32 oleaut32 uuid)
+else()
+  message(FATAL_ERROR "DuckDB MSOLAP Extension is only supported on Windows due to COM dependencies")
+endif()
 
-build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
+set(EXTENSION_SOURCES 
+    src/msolap_db.cpp
+    src/msolap_stmt.cpp
+    src/msolap_scanner.cpp
+    src/msolap_utils.cpp
+    src/msolap_extension.cpp
+)
+
+add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
+set(PARAMETERS "-warnings")
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-# Link OpenSSL in both the static library as the loadable extension
-target_link_libraries(${EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries(${LOADABLE_EXTENSION_NAME} OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(${LOADABLE_EXTENSION_NAME} ${COM_LIBS})
 
 install(
   TARGETS ${EXTENSION_NAME}

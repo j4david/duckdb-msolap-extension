@@ -10,6 +10,12 @@
 
 namespace duckdb {
 
+struct COLUMNDATA {
+    DBSTATUS dwStatus;
+    DBLENGTH dwLength;
+    VARIANT  var;
+};
+
 class MSOLAPDB;
 
 class MSOLAPStatement {

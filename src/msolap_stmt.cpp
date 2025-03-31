@@ -162,40 +162,36 @@ void MSOLAPStatement::SetupBindings() {
     // Create bindings for each column
     bindings.resize(cColumns);
     
-    DBLENGTH dwOffset = 0;
+    DWORD dwOffset = 0;
     
     for (DBORDINAL i = 0; i < cColumns; i++) {
-        // Initialize binding
-        bindings[i].iOrdinal = i + 1; // 1-based column ordinals
-        bindings[i].dwPart = DBPART_VALUE | DBPART_LENGTH | DBPART_STATUS;
-        bindings[i].dwMemOwner = DBMEMOWNER_CLIENTOWNED;
-        bindings[i].eParamIO = DBPARAMIO_NOTPARAM;
-        bindings[i].cbMaxLen = sizeof(VARIANT);
-        bindings[i].dwFlags = 0;
-        bindings[i].wType = DBTYPE_VARIANT;
+        // Initialize binding fully
+        bindings[i].iOrdinal = pColumnInfo[i].iOrdinal;  // Use actual column ordinal
+        bindings[i].obValue = dwOffset + offsetof(COLUMNDATA, var);
+        bindings[i].obLength = dwOffset + offsetof(COLUMNDATA, dwLength);
+        bindings[i].obStatus = dwOffset + offsetof(COLUMNDATA, dwStatus);
         bindings[i].pTypeInfo = NULL;
         bindings[i].pObject = NULL;
         bindings[i].pBindExt = NULL;
+        bindings[i].cbMaxLen = sizeof(VARIANT);
+        bindings[i].dwFlags = 0;
+        bindings[i].eParamIO = DBPARAMIO_NOTPARAM;
+        bindings[i].dwPart = DBPART_VALUE | DBPART_LENGTH | DBPART_STATUS;
+        bindings[i].dwMemOwner = DBMEMOWNER_CLIENTOWNED;
+        bindings[i].wType = DBTYPE_VARIANT;
+        bindings[i].bPrecision = 0;
+        bindings[i].bScale = 0;
         
-        // Set offset for status
-        bindings[i].obStatus = dwOffset;
-        dwOffset += sizeof(DBSTATUS);
-        
-        // Set offset for length
-        bindings[i].obLength = dwOffset;
-        dwOffset += sizeof(DBLENGTH);
-        
-        // Set offset for value
-        bindings[i].obValue = dwOffset;
-        dwOffset += sizeof(VARIANT);
+        // Move to next COLUMNDATA structure
+        dwOffset += sizeof(COLUMNDATA);
     }
     
-    // Create the accessor
+    // Create the accessor with correct buffer size
     HRESULT hr = pIAccessor->CreateAccessor(
         DBACCESSOR_ROWDATA,
         cColumns,
         bindings.data(),
-        0,
+        dwOffset,  // Pass total buffer size
         &hAccessor,
         NULL);
     
@@ -343,18 +339,17 @@ Value MSOLAPStatement::GetValue(DBORDINAL column, const LogicalType& type) {
         throw MSOLAPException("Column index out of range");
     }
     
-    // Get the status from the row data
-    DBSTATUS status = *(DBSTATUS*)(pRowData + bindings[column].obStatus);
+    // Calculate the offset to the COLUMNDATA structure for this column
+    COLUMNDATA* pColData = (COLUMNDATA*)(pRowData + (column * sizeof(COLUMNDATA)));
     
-    if (status != DBSTATUS_S_OK) {
+    // Get status
+    if (pColData->dwStatus != DBSTATUS_S_OK) {
         // Handle NULL or error
         return Value(type);
     }
     
-    // Get the variant value from the row data
-    VARIANT* pVariant = (VARIANT*)(pRowData + bindings[column].obValue);
-    
-    return GetVariantValue(pVariant, type);
+    // Get variant value
+    return GetVariantValue(&(pColData->var), type);
 }
 
 Value MSOLAPStatement::GetVariantValue(VARIANT* var, const LogicalType& type) {

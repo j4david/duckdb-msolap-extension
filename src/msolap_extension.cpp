@@ -13,15 +13,15 @@ static void LoadInternal(DatabaseInstance &instance) {
     ExtensionUtil::RegisterFunction(instance, msolap_scan_fun);
 }
 
-void MSOLAPExtension::Load(DuckDB &db) {
+void MsolapExtension::Load(DuckDB &db) {
     LoadInternal(*db.instance);
 }
 
-std::string MSOLAPExtension::Name() {
+std::string MsolapExtension::Name() {
     return "msolap";
 }
 
-std::string MSOLAPExtension::Version() const {
+std::string MsolapExtension::Version() const {
 #ifdef EXT_VERSION_MSOLAP
     return EXT_VERSION_MSOLAP;
 #else
@@ -35,7 +35,7 @@ extern "C" {
 
 DUCKDB_EXTENSION_API void msolap_init(duckdb::DatabaseInstance &db) {
     duckdb::DuckDB db_wrapper(db);
-    db_wrapper.LoadExtension<duckdb::MSOLAPExtension>();
+    db_wrapper.LoadExtension<duckdb::MsolapExtension>();
 }
 
 DUCKDB_EXTENSION_API const char *msolap_version() {

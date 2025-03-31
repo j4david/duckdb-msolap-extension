@@ -4,7 +4,7 @@
 
 namespace duckdb {
 
-class MSOLAPExtension : public Extension {
+class MsolapExtension : public Extension {
 public:
     // Attach the extension to the database
     void Load(DuckDB& db) override;

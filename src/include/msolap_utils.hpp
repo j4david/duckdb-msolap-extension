@@ -16,6 +16,7 @@
 #define DB_S_ENDOFROWSET 0x00040EC6L
 #endif
 
+// #define MSOLAP_DEBUG
 // RAW logging
 #ifdef MSOLAP_DEBUG
     #include <iostream>

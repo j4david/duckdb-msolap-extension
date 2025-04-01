@@ -155,20 +155,16 @@ MSOLAPStatement& MSOLAPStatement::operator=(MSOLAPStatement&& other) noexcept {
     return *this;
 }
 void MSOLAPStatement::SetupBindings() {
-    MSOLAP_LOG("Begin SetupBindings(), columns: " + std::to_string(cColumns));
     if (cColumns == 0) {
-        MSOLAP_LOG("No columns, returning");
         return;
     }
     
     // Create bindings for each column
-    MSOLAP_LOG("Resizing bindings array to " + std::to_string(cColumns));
     bindings.resize(cColumns);
     
     DWORD dwOffset = 0;
     
     for (DBORDINAL i = 0; i < cColumns; i++) {
-        MSOLAP_LOG("Setting up binding for column " + std::to_string(i));
         // Initialize binding fully
         bindings[i].iOrdinal = pColumnInfo[i].iOrdinal;  // Use actual column ordinal
         bindings[i].obValue = dwOffset + offsetof(COLUMNDATA, var);
@@ -191,7 +187,6 @@ void MSOLAPStatement::SetupBindings() {
     }
     
     // Create the accessor with correct buffer size
-    MSOLAP_LOG("Creating accessor with buffer size: " + std::to_string(dwOffset));
     HRESULT hr = pIAccessor->CreateAccessor(
         DBACCESSOR_ROWDATA,
         cColumns,
@@ -201,85 +196,64 @@ void MSOLAPStatement::SetupBindings() {
         NULL);
     
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to create accessor: " + std::to_string(hr));
         throw MSOLAPException(hr, "Failed to create accessor");
     }
-    MSOLAP_LOG("Accessor created successfully");
     
     // Allocate memory for row data
-    MSOLAP_LOG("Allocating memory for row data, size: " + std::to_string(dwOffset));
     pRowData = new BYTE[dwOffset];
     memset(pRowData, 0, dwOffset);
-    MSOLAP_LOG("SetupBindings complete");
 }
 
 bool MSOLAPStatement::Execute() {
-    MSOLAP_LOG("Begin Execute()");
     if (executed) {
-        MSOLAP_LOG("Already executed, returning");
         return true;
     }
     
     HRESULT hr;
     
     // Execute the command
-    MSOLAP_LOG("About to execute command");
     hr = pICommand->Execute(NULL, IID_IRowset, NULL, NULL, (IUnknown**)&pIRowset);
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to execute command with HRESULT: " + std::to_string(hr));
         throw MSOLAPException(hr, "Failed to execute command");
     }
-    MSOLAP_LOG("Command executed successfully");
     
     // Get column information
     IColumnsInfo* pIColumnsInfo = NULL;
-    MSOLAP_LOG("Getting IColumnsInfo interface");
     hr = pIRowset->QueryInterface(IID_IColumnsInfo, (void**)&pIColumnsInfo);
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to get IColumnsInfo interface: " + std::to_string(hr));
         ::SafeRelease(&pIRowset);
         throw MSOLAPException(hr, "Failed to get IColumnsInfo interface");
     }
     
-    MSOLAP_LOG("Getting column info");
     hr = pIColumnsInfo->GetColumnInfo(&cColumns, &pColumnInfo, &pStringsBuffer);
     ::SafeRelease(&pIColumnsInfo);
     
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to get column info: " + std::to_string(hr));
         ::SafeRelease(&pIRowset);
         throw MSOLAPException(hr, "Failed to get column info");
     }
-    MSOLAP_LOG("Got column info, columns: " + std::to_string(cColumns));
     
     // Get the IAccessor interface
-    MSOLAP_LOG("Getting IAccessor interface");
     hr = pIRowset->QueryInterface(IID_IAccessor, (void**)&pIAccessor);
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to get IAccessor interface: " + std::to_string(hr));
         ::SafeRelease(&pIRowset);
         throw MSOLAPException(hr, "Failed to get IAccessor interface");
     }
     
     // Setup bindings for the columns
-    MSOLAP_LOG("Setting up bindings");
     SetupBindings();
     
     executed = true;
-    MSOLAP_LOG("Execution complete");
     return true;
 }
 
 bool MSOLAPStatement::Step() {
-    MSOLAP_LOG("Begin Step()");
     if (!executed) {
-        MSOLAP_LOG("Not executed yet, calling Execute()");
         Execute();
     }
     
     if (has_row) {
         // Release the previous row
-        MSOLAP_LOG("Releasing previous row");
         pIRowset->ReleaseRows(1, &hRow, NULL, NULL, NULL);
         has_row = false;
     }
@@ -288,33 +262,26 @@ bool MSOLAPStatement::Step() {
     DBCOUNTITEM cRowsObtained = 0;
     
     // Get the next row - using double indirection with an array of HROWs
-    MSOLAP_LOG("Getting next row");
     HROW* phRows = &hRow; // array of one HROW
     hr = pIRowset->GetNextRows(DB_NULL_HCHAPTER, 0, 1, &cRowsObtained, &phRows);
     
     if (hr == DB_S_ENDOFROWSET || cRowsObtained == 0) {
         // No more rows
-        MSOLAP_LOG("No more rows");
         return false;
     }
     
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to get next row: " + std::to_string(hr));
         throw MSOLAPException(hr, "Failed to get next row");
     }
-    MSOLAP_LOG("Got next row");
     
     // GetNextRows will always set hRow since we're using phRows = &hRow
     
     // Get the data for the row
-    MSOLAP_LOG("Getting row data");
     hr = pIRowset->GetData(hRow, hAccessor, pRowData);
     if (FAILED(hr)) {
-        MSOLAP_LOG("Failed to get row data: " + std::to_string(hr));
         pIRowset->ReleaseRows(1, &hRow, NULL, NULL, NULL);
         throw MSOLAPException(hr, "Failed to get row data");
     }
-    MSOLAP_LOG("Got row data successfully");
     
     has_row = true;
     return true;
@@ -341,99 +308,67 @@ DBTYPE MSOLAPStatement::GetColumnType(DBORDINAL column) const {
 }
 
 std::vector<LogicalType> MSOLAPStatement::GetColumnTypes() const {
-    MSOLAP_LOG("Begin GetColumnTypes for " + std::to_string(cColumns) + " columns");
     std::vector<LogicalType> types;
     types.reserve(cColumns);
     
     try {
         for (DBORDINAL i = 0; i < cColumns; i++) {
-            MSOLAP_LOG("Getting type for column " + std::to_string(i) + " with DBTYPE: " + std::to_string(pColumnInfo[i].wType));
             types.push_back(DBTypeToLogicalType(pColumnInfo[i].wType));
         }
     } catch (const std::exception& e) {
-        MSOLAP_LOG("Exception in GetColumnTypes: " + std::string(e.what()));
         throw MSOLAPException("Error in GetColumnTypes: " + std::string(e.what()));
     } catch (...) {
-        MSOLAP_LOG("Unknown exception in GetColumnTypes");
         throw MSOLAPException("Unknown error in GetColumnTypes");
     }
     
-    MSOLAP_LOG("GetColumnTypes complete, returned " + std::to_string(types.size()) + " types");
     return types;
 }
 
 std::vector<std::string> MSOLAPStatement::GetColumnNames() const {
-    MSOLAP_LOG("Begin GetColumnNames for " + std::to_string(cColumns) + " columns");
     std::vector<std::string> names;
     names.reserve(cColumns);
     
     try {
         for (DBORDINAL i = 0; i < cColumns; i++) {
-            MSOLAP_LOG("Getting name for column " + std::to_string(i));
-            std::string name;
-            
-            // Use safe pointer check
+            // Use direct pointer comparison to check if name exists
             if (pColumnInfo[i].pwszName != nullptr) {
-                // Use try/catch for each conversion to isolate failures
-                try {
-                    name = BSTRToString(pColumnInfo[i].pwszName);
-                    MSOLAP_LOG("Raw column " + std::to_string(i) + " name: " + name);
-                } catch (...) {
-                    MSOLAP_LOG("Error converting column name, using default");
-                    name = "Column_" + std::to_string(i);
+                // Try to extract just the actual column name by looking for patterns
+                std::string fullName = BSTRToString(pColumnInfo[i].pwszName);
+                
+                // Based on your OLAP data pattern, try to extract just the main part
+                // Looking for patterns like Customer[CustomerKey]
+                size_t openBracket = fullName.find('[');
+                size_t closeBracket = fullName.find(']');
+                
+                if (openBracket != std::string::npos && closeBracket != std::string::npos && openBracket < closeBracket) {
+                    // Extract just the name inside brackets
+                    std::string extractedName = fullName.substr(openBracket + 1, closeBracket - openBracket - 1);
+                    names.push_back(extractedName);
+                } else {
+                    // Fallback to sanitized full name
+                    names.push_back(SanitizeColumnName(fullName));
                 }
             } else {
-                MSOLAP_LOG("Column " + std::to_string(i) + " has null name, using default");
-                name = "Column_" + std::to_string(i);
+                names.push_back("Column_" + std::to_string(i));
             }
-            
-            // Sanitize the name
-            std::string sanitized_name = SanitizeColumnName(name);
-            
-            // Make sure names are unique
-            bool is_unique = true;
-            for (size_t j = 0; j < names.size(); j++) {
-                if (names[j] == sanitized_name) {
-                    is_unique = false;
-                    sanitized_name += "_" + std::to_string(i);
-                    break;
-                }
-            }
-            
-            MSOLAP_LOG("Final column " + std::to_string(i) + " name: " + sanitized_name);
-            names.push_back(sanitized_name);
-        }
-    } catch (const std::exception& e) {
-        MSOLAP_LOG("Exception in GetColumnNames: " + std::string(e.what()));
-        
-        // If we fail, return default column names
-        names.clear();
-        for (DBORDINAL i = 0; i < cColumns; i++) {
-            names.push_back("Column_" + std::to_string(i));
         }
     } catch (...) {
-        MSOLAP_LOG("Unknown exception in GetColumnNames");
-        
-        // If we fail, return default column names
+        // Reset and use default names if there's any error
         names.clear();
         for (DBORDINAL i = 0; i < cColumns; i++) {
             names.push_back("Column_" + std::to_string(i));
         }
     }
     
-    MSOLAP_LOG("GetColumnNames complete, returned " + std::to_string(names.size()) + " names");
     return names;
 }
 
 Value MSOLAPStatement::GetValue(DBORDINAL column, const LogicalType& type) {
-    MSOLAP_LOG("GetValue for column " + std::to_string(column) + ", type: " + type.ToString());
     if (!has_row) {
-        MSOLAP_LOG("No current row");
         throw MSOLAPException("No current row");
     }
     
     if (column >= cColumns) {
-        MSOLAP_LOG("Column index out of range: " + std::to_string(column) + " >= " + std::to_string(cColumns));
         throw MSOLAPException("Column index out of range");
     }
     
@@ -441,55 +376,43 @@ Value MSOLAPStatement::GetValue(DBORDINAL column, const LogicalType& type) {
     COLUMNDATA* pColData = (COLUMNDATA*)(pRowData + (column * sizeof(COLUMNDATA)));
     
     // Get status
-    MSOLAP_LOG("Column status: " + std::to_string(pColData->dwStatus));
     if (pColData->dwStatus != DBSTATUS_S_OK) {
         // Handle NULL or error
-        MSOLAP_LOG("Column status not OK, returning NULL value");
         return Value(type);
     }
     
     // Get variant value
-    MSOLAP_LOG("Getting variant value");
     Value val = GetVariantValue(&(pColData->var), type);
-    MSOLAP_LOG("Got variant value, returning");
     return val;
 }
 
 Value MSOLAPStatement::GetVariantValue(VARIANT* var, const LogicalType& type) {
-    MSOLAP_LOG("GetVariantValue with variant type: " + std::to_string(var->vt));
     
     switch (type.id()) {
         case LogicalTypeId::SMALLINT:
         case LogicalTypeId::INTEGER:
         case LogicalTypeId::BIGINT:
-            MSOLAP_LOG("Converting to BIGINT");
             return Value::BIGINT(ConvertVariantToInt64(var));
             
         case LogicalTypeId::FLOAT:
         case LogicalTypeId::DOUBLE:
-            MSOLAP_LOG("Converting to DOUBLE");
             return Value::DOUBLE(ConvertVariantToDouble(var));
             
         case LogicalTypeId::VARCHAR:
         {
-            MSOLAP_LOG("Converting to VARCHAR");
             // Create a temporary vector for string conversion
             Vector result_vec(LogicalType::VARCHAR);
             auto str_val = ConvertVariantToString(var, result_vec);
-            MSOLAP_LOG("Converted to string: " + str_val.GetString());
             return Value(str_val);
         }
             
         case LogicalTypeId::BOOLEAN:
-            MSOLAP_LOG("Converting to BOOLEAN");
             return Value::BOOLEAN(ConvertVariantToBool(var));
             
         case LogicalTypeId::TIMESTAMP:
-            MSOLAP_LOG("Converting to TIMESTAMP");
             return Value::TIMESTAMP(ConvertVariantToTimestamp(var));
             
         case LogicalTypeId::DECIMAL:
-            MSOLAP_LOG("Converting to DECIMAL (as DOUBLE)");
             return Value::DOUBLE(ConvertVariantToDouble(var));
             
         default:

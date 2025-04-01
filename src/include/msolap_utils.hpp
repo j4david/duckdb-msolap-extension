@@ -16,6 +16,13 @@
 #define DB_S_ENDOFROWSET 0x00040EC6L
 #endif
 
+// RAW logging
+#ifdef MSOLAP_DEBUG
+    #include <iostream>
+    #define MSOLAP_LOG(msg) std::cout << "[MSOLAP_LOG] " << msg << std::endl
+#else
+    #define MSOLAP_LOG(msg) do {} while(0)
+#endif
 namespace duckdb {
 
 // Define the MSOLAP CLSID for MSOLAP.8
@@ -60,6 +67,8 @@ bool ConvertVariantToBool(VARIANT* var);
 
 // DB type to logical type conversion
 LogicalType DBTypeToLogicalType(DBTYPE dbType);
+
+std::string SanitizeColumnName(const std::string& name);
 
 } // namespace duckdb
 

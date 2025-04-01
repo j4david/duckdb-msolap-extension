@@ -1,6 +1,5 @@
 #include "msolap_utils.hpp"
 #include <comdef.h>
-
 namespace duckdb {
 
 std::string GetErrorMessage(HRESULT hr) {
@@ -22,18 +21,41 @@ std::string GetErrorMessage(HRESULT hr) {
 }
 
 std::string BSTRToString(BSTR bstr) {
+    MSOLAP_LOG("Converting BSTR to string");
     if (!bstr) {
+        MSOLAP_LOG("BSTR is null, returning empty string");
         return "";
     }
     
-    // Convert BSTR to std::string
-    int wslen = ::SysStringLen(bstr);
-    int len = ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, NULL, 0, NULL, NULL);
-    
-    std::string result(len, 0);
-    ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, &result[0], len, NULL, NULL);
-    
-    return result;
+    try {
+        // Convert BSTR to std::string
+        int wslen = ::SysStringLen(bstr);
+        MSOLAP_LOG("BSTR length: " + std::to_string(wslen));
+        
+        // Sanity check on length
+        if (wslen <= 0 || wslen > 10000) {  // Assuming no column name should be longer than 10,000 characters
+            MSOLAP_LOG("Invalid BSTR length: " + std::to_string(wslen) + ", returning default name");
+            return "Column_unknown";
+        }
+        
+        int len = ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, NULL, 0, NULL, NULL);
+        if (len <= 0) {
+            MSOLAP_LOG("WideCharToMultiByte failed with length: " + std::to_string(len));
+            return "Column_unknown";
+        }
+        
+        std::string result(len, 0);
+        ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, &result[0], len, NULL, NULL);
+        
+        MSOLAP_LOG("Converted BSTR to string: " + result);
+        return result;
+    } catch (const std::exception& e) {
+        MSOLAP_LOG("Exception in BSTRToString: " + std::string(e.what()));
+        return "Column_error";
+    } catch (...) {
+        MSOLAP_LOG("Unknown exception in BSTRToString");
+        return "Column_error";
+    }
 }
 
 BSTR StringToBSTR(const std::string& str) {
@@ -252,32 +274,101 @@ bool ConvertVariantToBool(VARIANT* var) {
 }
 
 LogicalType DBTypeToLogicalType(DBTYPE dbType) {
-    switch (dbType) {
-        case DBTYPE_I2:
-            return LogicalType::SMALLINT;
-        case DBTYPE_I4:
-            return LogicalType::INTEGER;
-        case DBTYPE_I8:
-            return LogicalType::BIGINT;
-        case DBTYPE_R4:
-            return LogicalType::FLOAT;
-        case DBTYPE_R8:
-            return LogicalType::DOUBLE;
-        case DBTYPE_BOOL:
-            return LogicalType::BOOLEAN;
-        case DBTYPE_BSTR:
-        case DBTYPE_STR:
-        case DBTYPE_WSTR:
-            return LogicalType::VARCHAR;
-        case DBTYPE_CY:
-            return LogicalType::DECIMAL(19, 4);
-        case DBTYPE_DATE:
-        case DBTYPE_DBDATE:
-        case DBTYPE_DBTIME:
-        case DBTYPE_DBTIMESTAMP:
-            return LogicalType::TIMESTAMP;
-        default:
-            return LogicalType::VARCHAR;
+    MSOLAP_LOG("Converting DBTYPE: " + std::to_string(dbType) + " to LogicalType");
+    try {
+        LogicalType result;
+        
+        switch (dbType) {
+            case DBTYPE_I2:
+                MSOLAP_LOG("DBTYPE_I2 -> SMALLINT");
+                result = LogicalType::SMALLINT;
+                break;
+            case DBTYPE_I4:
+                MSOLAP_LOG("DBTYPE_I4 -> INTEGER");
+                result = LogicalType::INTEGER;
+                break;
+            case DBTYPE_I8:
+                MSOLAP_LOG("DBTYPE_I8 -> BIGINT");
+                result = LogicalType::BIGINT;
+                break;
+            case DBTYPE_R4:
+                MSOLAP_LOG("DBTYPE_R4 -> FLOAT");
+                result = LogicalType::FLOAT;
+                break;
+            case DBTYPE_R8:
+                MSOLAP_LOG("DBTYPE_R8 -> DOUBLE");
+                result = LogicalType::DOUBLE;
+                break;
+            case DBTYPE_BOOL:
+                MSOLAP_LOG("DBTYPE_BOOL -> BOOLEAN");
+                result = LogicalType::BOOLEAN;
+                break;
+            case DBTYPE_BSTR:
+            case DBTYPE_STR:
+            case DBTYPE_WSTR:
+                MSOLAP_LOG("DBTYPE_BSTR/STR/WSTR -> VARCHAR");
+                result = LogicalType::VARCHAR;
+                break;
+            case DBTYPE_CY:
+                MSOLAP_LOG("DBTYPE_CY -> DECIMAL(19, 4)");
+                result = LogicalType::DECIMAL(19, 4);
+                break;
+            case DBTYPE_DATE:
+            case DBTYPE_DBDATE:
+            case DBTYPE_DBTIME:
+            case DBTYPE_DBTIMESTAMP:
+                MSOLAP_LOG("DBTYPE_DATE/DBDATE/DBTIME/DBTIMESTAMP -> TIMESTAMP");
+                result = LogicalType::TIMESTAMP;
+                break;
+            default:
+                MSOLAP_LOG("DBTYPE_" + std::to_string(dbType) + " -> VARCHAR (default)");
+                result = LogicalType::VARCHAR;
+                break;
+        }
+        
+        MSOLAP_LOG("Converted to LogicalType: " + result.ToString());
+        return result;
+    } catch (const std::exception& e) {
+        MSOLAP_LOG("Exception in DBTypeToLogicalType: " + std::string(e.what()));
+        // Default to VARCHAR for any exception
+        return LogicalType::VARCHAR;
+    } catch (...) {
+        MSOLAP_LOG("Unknown exception in DBTypeToLogicalType");
+        return LogicalType::VARCHAR;
+    }
+}
+
+std::string SanitizeColumnName(const std::string& name) {
+    MSOLAP_LOG("Sanitizing column name: " + name);
+    
+    try {
+        if (name.empty()) {
+            return "Column_empty";
+        }
+        
+        std::string sanitized = name;
+        
+        // Replace problematic characters with underscores
+        for (size_t i = 0; i < sanitized.length(); i++) {
+            char c = sanitized[i];
+            if (c == '[' || c == ']' || c == ' ' || c == '.' || c == ',' || 
+                c == ';' || c == ':' || c == '/' || c == '\\' || c == '?' || 
+                c == '*' || c == '+' || c == '=' || c == '@' || c == '!' || 
+                c == '%' || c == '&' || c == '(' || c == ')' || c == '<' || 
+                c == '>' || c == '{' || c == '}' || c == '|' || c == '^' || 
+                c == '~' || c == '`' || c == '\'' || c == '"') {
+                sanitized[i] = '_';
+            }
+        }
+        
+        MSOLAP_LOG("Sanitized to: " + sanitized);
+        return sanitized;
+    } catch (const std::exception& e) {
+        MSOLAP_LOG("Exception in SanitizeColumnName: " + std::string(e.what()));
+        return "Column_error";
+    } catch (...) {
+        MSOLAP_LOG("Unknown exception in SanitizeColumnName");
+        return "Column_error";
     }
 }
 

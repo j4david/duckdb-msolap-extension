@@ -13,7 +13,7 @@ make test_debug
 # Building
 
 ```bash
-cmake  -DEXTENSION_STATIC_BUILD=1 -DDUCKDB_EXTENSION_CONFIGS='c:/git/hub/duckdb-msolap-extension/extension_config.cmake'   -DOSX_BUILD_ARCH=   -DDUCKDB_EXPLICIT_PLATFORM='windows_amd64' -DCUSTOM_LINKER=  -DCMAKE_BUILD_TYPE=Release -S "./duckdb/" -B build/release
+make release -e EXT_CONFIG='c:/git/hub/duckdb-msolap-extension/extension_config.cmake'
 ```
 
 ```bash

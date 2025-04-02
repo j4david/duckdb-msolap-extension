@@ -1,6 +1,5 @@
 #include "msolap_utils.hpp"
 #include <comdef.h>
-
 namespace duckdb {
 
 std::string GetErrorMessage(HRESULT hr) {
@@ -22,18 +21,46 @@ std::string GetErrorMessage(HRESULT hr) {
 }
 
 std::string BSTRToString(BSTR bstr) {
+    // MSOLAP_LOG("Converting BSTR to string");
     if (!bstr) {
+        // MSOLAP_LOG("BSTR is null, returning empty string");
         return "";
     }
     
-    // Convert BSTR to std::string
-    int wslen = ::SysStringLen(bstr);
-    int len = ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, NULL, 0, NULL, NULL);
-    
-    std::string result(len, 0);
-    ::WideCharToMultiByte(CP_ACP, 0, bstr, wslen, &result[0], len, NULL, NULL);
-    
-    return result;
+    try {
+        // Convert using safe methods that handle null termination properly
+        int wslen = ::SysStringLen(bstr);
+        
+        // Sanity check
+        if (wslen <= 0 || wslen > 10000) {
+            return "Column_unknown";
+        }
+        
+        // Create a proper C++ wstring (handles null characters correctly)
+        std::wstring wstr(bstr, wslen);
+        
+        // Use WideCharToMultiByte more carefully
+        int bufferSize = ::WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), wstr.length(), nullptr, 0, nullptr, nullptr);
+        
+        if (bufferSize <= 0) {
+            return "Column_unknown";
+        }
+        
+        std::string result(bufferSize, 0);
+        ::WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), wstr.length(), &result[0], bufferSize, nullptr, nullptr);
+        
+        // Clean the string - remove any non-printable characters 
+        result.erase(
+            std::remove_if(result.begin(), result.end(), 
+                [](unsigned char c) { return c < 32 || c > 126; }
+            ), 
+            result.end()
+        );
+        
+        return result;
+    } catch (...) {
+        return "Column_unknown";
+    }
 }
 
 BSTR StringToBSTR(const std::string& str) {
@@ -252,32 +279,90 @@ bool ConvertVariantToBool(VARIANT* var) {
 }
 
 LogicalType DBTypeToLogicalType(DBTYPE dbType) {
-    switch (dbType) {
-        case DBTYPE_I2:
-            return LogicalType::SMALLINT;
-        case DBTYPE_I4:
-            return LogicalType::INTEGER;
-        case DBTYPE_I8:
-            return LogicalType::BIGINT;
-        case DBTYPE_R4:
-            return LogicalType::FLOAT;
-        case DBTYPE_R8:
-            return LogicalType::DOUBLE;
-        case DBTYPE_BOOL:
-            return LogicalType::BOOLEAN;
-        case DBTYPE_BSTR:
-        case DBTYPE_STR:
-        case DBTYPE_WSTR:
-            return LogicalType::VARCHAR;
-        case DBTYPE_CY:
-            return LogicalType::DECIMAL(19, 4);
-        case DBTYPE_DATE:
-        case DBTYPE_DBDATE:
-        case DBTYPE_DBTIME:
-        case DBTYPE_DBTIMESTAMP:
-            return LogicalType::TIMESTAMP;
-        default:
-            return LogicalType::VARCHAR;
+    try {
+        LogicalType result;
+        
+        switch (dbType) {
+            case DBTYPE_I2:
+                result = LogicalType::SMALLINT;
+                break;
+            case DBTYPE_I4:
+                result = LogicalType::INTEGER;
+                break;
+            case DBTYPE_I8:
+                result = LogicalType::BIGINT;
+                break;
+            case DBTYPE_R4:
+                result = LogicalType::FLOAT;
+                break;
+            case DBTYPE_R8:
+                result = LogicalType::DOUBLE;
+                break;
+            case DBTYPE_BOOL:
+                result = LogicalType::BOOLEAN;
+                break;
+            case DBTYPE_BSTR:
+            case DBTYPE_STR:
+            case DBTYPE_WSTR:
+                result = LogicalType::VARCHAR;
+                break;
+            case DBTYPE_CY:
+                result = LogicalType::DECIMAL(19, 4);
+                break;
+            case DBTYPE_DATE:
+            case DBTYPE_DBDATE:
+            case DBTYPE_DBTIME:
+            case DBTYPE_DBTIMESTAMP:
+                result = LogicalType::TIMESTAMP;
+                break;
+            default:
+                result = LogicalType::VARCHAR;
+                break;
+        }
+        
+        // MSOLAP_LOG("Converted to LogicalType: " + result.ToString());
+        return result;
+    } catch (const std::exception& e) {
+        // MSOLAP_LOG("Exception in DBTypeToLogicalType: " + std::string(e.what()));
+        // Default to VARCHAR for any exception
+        return LogicalType::VARCHAR;
+    } catch (...) {
+        return LogicalType::VARCHAR;
+    }
+}
+
+std::string SanitizeColumnName(const std::string& name) {
+    
+    try {
+        if (name.empty()) {
+            return "Column_empty";
+        }
+        
+        std::string sanitized = name;
+        
+        // Replace problematic characters with underscores
+        for (size_t i = 0; i < sanitized.length(); i++) {
+            char c = sanitized[i];
+            if (c == '[' || c == ']' || c == ' ' || c == '.' || c == ',' || 
+                c == ';' || c == ':' || c == '/' || c == '\\' || c == '?' || 
+                c == '*' || c == '+' || c == '=' || c == '@' || c == '!' || 
+                c == '%' || c == '&' || c == '(' || c == ')' || c == '<' || 
+                c == '>' || c == '{' || c == '}' || c == '|' || c == '^' || 
+                c == '~' || c == '`' || c == '\'' || c == '"' || c == '-') {
+                sanitized[i] = '_';
+            }
+        }
+        
+        // Truncate if too long to avoid issues
+        if (sanitized.length() > 64) {
+            sanitized = sanitized.substr(0, 64);
+        }
+        
+        return sanitized;
+    } catch (const std::exception& e) {
+        return "Column_error";
+    } catch (...) {
+        return "Column_error";
     }
 }
 

@@ -59,6 +59,7 @@ unique_ptr<FunctionData> MSOLAPBind(ClientContext &context,
         auto column_types = stmt.GetColumnTypes(); // This returns std::vector
         auto column_names = stmt.GetColumnNames(); // This returns std::vector
         
+        
         // Clear the DuckDB vectors
         result->types.clear();
         result->names.clear();
@@ -89,6 +90,10 @@ unique_ptr<FunctionData> MSOLAPBind(ClientContext &context,
         db.Close();
     } catch (const MSOLAPException& e) {
         throw BinderException("MSOLAP error: %s", e.what());
+    } catch (const std::exception& e) {
+        throw BinderException("MSOLAP error: %s", e.what());
+    } catch (...) {
+        throw BinderException("Unknown error during MSOLAP bind");
     }
     
     result->rows_per_group = optional_idx();
@@ -182,6 +187,10 @@ void MSOLAPScan(ClientContext& context,
         }
     } catch (const MSOLAPException& e) {
         throw InternalException("MSOLAP error during scan: %s", e.what());
+    } catch (const std::exception& e) {
+        throw InternalException("MSOLAP error during scan: %s", e.what());
+    } catch (...) {
+        throw InternalException("Unknown error during MSOLAP scan");
     }
     
     // Set the output size

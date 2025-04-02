@@ -206,7 +206,6 @@ void MSOLAPStatement::SetupBindings() {
 
 bool MSOLAPStatement::Execute() {
     if (executed) {
-        // Already executed
         return true;
     }
     
@@ -312,8 +311,14 @@ std::vector<LogicalType> MSOLAPStatement::GetColumnTypes() const {
     std::vector<LogicalType> types;
     types.reserve(cColumns);
     
-    for (DBORDINAL i = 0; i < cColumns; i++) {
-        types.push_back(DBTypeToLogicalType(pColumnInfo[i].wType));
+    try {
+        for (DBORDINAL i = 0; i < cColumns; i++) {
+            types.push_back(DBTypeToLogicalType(pColumnInfo[i].wType));
+        }
+    } catch (const std::exception& e) {
+        throw MSOLAPException("Error in GetColumnTypes: " + std::string(e.what()));
+    } catch (...) {
+        throw MSOLAPException("Unknown error in GetColumnTypes");
     }
     
     return types;
@@ -323,8 +328,36 @@ std::vector<std::string> MSOLAPStatement::GetColumnNames() const {
     std::vector<std::string> names;
     names.reserve(cColumns);
     
-    for (DBORDINAL i = 0; i < cColumns; i++) {
-        names.push_back(BSTRToString(pColumnInfo[i].pwszName));
+    try {
+        for (DBORDINAL i = 0; i < cColumns; i++) {
+            // Use direct pointer comparison to check if name exists
+            if (pColumnInfo[i].pwszName != nullptr) {
+                // Try to extract just the actual column name by looking for patterns
+                std::string fullName = BSTRToString(pColumnInfo[i].pwszName);
+                
+                // Based on your OLAP data pattern, try to extract just the main part
+                // Looking for patterns like Customer[CustomerKey]
+                size_t openBracket = fullName.find('[');
+                size_t closeBracket = fullName.find(']');
+                
+                if (openBracket != std::string::npos && closeBracket != std::string::npos && openBracket < closeBracket) {
+                    // Extract just the name inside brackets
+                    std::string extractedName = fullName.substr(openBracket + 1, closeBracket - openBracket - 1);
+                    names.push_back(extractedName);
+                } else {
+                    // Fallback to sanitized full name
+                    names.push_back(SanitizeColumnName(fullName));
+                }
+            } else {
+                names.push_back("Column_" + std::to_string(i));
+            }
+        }
+    } catch (...) {
+        // Reset and use default names if there's any error
+        names.clear();
+        for (DBORDINAL i = 0; i < cColumns; i++) {
+            names.push_back("Column_" + std::to_string(i));
+        }
     }
     
     return names;
@@ -349,10 +382,12 @@ Value MSOLAPStatement::GetValue(DBORDINAL column, const LogicalType& type) {
     }
     
     // Get variant value
-    return GetVariantValue(&(pColData->var), type);
+    Value val = GetVariantValue(&(pColData->var), type);
+    return val;
 }
 
 Value MSOLAPStatement::GetVariantValue(VARIANT* var, const LogicalType& type) {
+    
     switch (type.id()) {
         case LogicalTypeId::SMALLINT:
         case LogicalTypeId::INTEGER:
@@ -367,7 +402,8 @@ Value MSOLAPStatement::GetVariantValue(VARIANT* var, const LogicalType& type) {
         {
             // Create a temporary vector for string conversion
             Vector result_vec(LogicalType::VARCHAR);
-            return Value(ConvertVariantToString(var, result_vec));
+            auto str_val = ConvertVariantToString(var, result_vec);
+            return Value(str_val);
         }
             
         case LogicalTypeId::BOOLEAN:

@@ -21,8 +21,7 @@ else()
 endif()
 
 set(EXTENSION_SOURCES 
-    src/msolap_db.cpp
-    src/msolap_stmt.cpp
+    src/msolap_connection.cpp
     src/msolap_scanner.cpp
     src/msolap_utils.cpp
     src/msolap_extension.cpp
@@ -30,6 +29,7 @@ set(EXTENSION_SOURCES
 
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 set(PARAMETERS "-warnings")
+# build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 target_link_libraries(${LOADABLE_EXTENSION_NAME} ${COM_LIBS})

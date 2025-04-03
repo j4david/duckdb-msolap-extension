@@ -37,7 +37,7 @@ void MSOLAPConnection::InitializeCOM() {
 
 void MSOLAPConnection::ParseConnectionString(const std::string &connection_string) {
     // Simple parsing of connection string
-    // Format expected: "Server=server_name;Database=database_name"
+    // Format expected: "Data Source=localhost:61324;Catalog=0ec50266-bdf5-4582-bc8c-82584866bcb7"
     
     std::map<std::string, std::string> properties;
     
@@ -236,7 +236,7 @@ IRowset* MSOLAPConnection::ExecuteQuery(const std::string &dax_query) {
         
         MSOLAPUtils::SafeRelease(&pICommandProperties);
     }
-    
+
     // Execute the command
     IRowset* pIRowset = NULL;
     hr = pICommand->Execute(NULL, IID_IRowset, NULL, NULL, (IUnknown**)&pIRowset);

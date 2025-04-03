@@ -210,6 +210,33 @@ IRowset* MSOLAPConnection::ExecuteQuery(const std::string &dax_query) {
         throw std::runtime_error("Failed to set command text: " + MSOLAPUtils::GetErrorMessage(hr));
     }
 
+    // Set rowset properties to disable bookmarks/rowid column
+    ICommandProperties* pICommandProperties = NULL;
+    hr = pICommand->QueryInterface(IID_ICommandProperties, (void**)&pICommandProperties);
+    if (SUCCEEDED(hr)) {
+        DBPROP dbProps[1];
+        DBPROPSET dbPropSet;
+
+        // Initialize the property structures
+        ZeroMemory(dbProps, sizeof(dbProps));
+
+        // Set the Bookmarks property to false to exclude rowid column
+        dbProps[0].dwPropertyID = DBPROP_BOOKMARKS;
+        dbProps[0].dwOptions = DBPROPOPTIONS_REQUIRED;
+        dbProps[0].vValue.vt = VT_BOOL;
+        dbProps[0].vValue.boolVal = VARIANT_FALSE;  // Disable bookmarks
+
+        // Set up the property set
+        dbPropSet.guidPropertySet = DBPROPSET_ROWSET;
+        dbPropSet.cProperties = 1;
+        dbPropSet.rgProperties = dbProps;
+
+        // Set the properties
+        pICommandProperties->SetProperties(1, &dbPropSet);
+        
+        MSOLAPUtils::SafeRelease(&pICommandProperties);
+    }
+    
     // Execute the command
     IRowset* pIRowset = NULL;
     hr = pICommand->Execute(NULL, IID_IRowset, NULL, NULL, (IUnknown**)&pIRowset);

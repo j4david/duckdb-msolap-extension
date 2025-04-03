@@ -32,13 +32,7 @@ MSOLAPConnection &MSOLAPConnection::operator=(MSOLAPConnection &&other) noexcept
 }
 
 void MSOLAPConnection::InitializeCOM() {
-    if (!com_initialized) {
-        HRESULT hr = CoInitialize(NULL);
-        if (FAILED(hr)) {
-            throw std::runtime_error("COM initialization failed: " + MSOLAPUtils::GetErrorMessage(hr));
-        }
-        com_initialized = true;
-    }
+    static thread_local ComInitializer initializer;
 }
 
 void MSOLAPConnection::ParseConnectionString(const std::string &connection_string) {

@@ -67,5 +67,28 @@ private:
     // COM initialization flag
     static bool com_initialized;
 };
+class ComInitializer {
+    public:
+        ComInitializer() {
+            HRESULT hr = CoInitialize(NULL);
+            if (FAILED(hr) && hr != S_FALSE) {
+                throw std::runtime_error("COM initialization failed");
+            }
+            initialized = (hr == S_OK); // Only track if we actually initialized
+        }
+        
+        ~ComInitializer() {
+            if (initialized) {
+                CoUninitialize();
+            }
+        }
+        
+        // Explicit "no copy" policy to prevent accidental copying
+        // ComInitializer(const ComInitializer&) = delete;
+        // ComInitializer& operator=(const ComInitializer&) = delete;
+        
+    private:
+        bool initialized;
+    };
 
 } // namespace duckdb

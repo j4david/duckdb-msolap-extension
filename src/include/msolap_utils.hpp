@@ -19,9 +19,7 @@ namespace duckdb {
 
 class MSOLAPUtils {
 public:
-    // Convert DBTYPE to string for debugging
-    static std::string DBTypeToString(DBTYPE type);
-    
+
     // Sanitize column names - replace brackets with underscores
     static std::string SanitizeColumnName(const std::wstring &name);
     

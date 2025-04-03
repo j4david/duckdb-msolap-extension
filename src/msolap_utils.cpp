@@ -2,40 +2,6 @@
 
 namespace duckdb {
 
-std::string MSOLAPUtils::DBTypeToString(DBTYPE type) {
-    switch (type) {
-    case DBTYPE_EMPTY: return "EMPTY";
-    case DBTYPE_NULL: return "NULL";
-    case DBTYPE_I2: return "I2";
-    case DBTYPE_I4: return "I4";
-    case DBTYPE_R4: return "R4";
-    case DBTYPE_R8: return "R8";
-    case DBTYPE_CY: return "CY";
-    case DBTYPE_DATE: return "DATE";
-    case DBTYPE_BSTR: return "BSTR";
-    case DBTYPE_ERROR: return "ERROR";
-    case DBTYPE_BOOL: return "BOOL";
-    case DBTYPE_VARIANT: return "VARIANT";
-    case DBTYPE_DECIMAL: return "DECIMAL";
-    case DBTYPE_I1: return "I1";
-    case DBTYPE_UI1: return "UI1";
-    case DBTYPE_UI2: return "UI2";
-    case DBTYPE_UI4: return "UI4";
-    case DBTYPE_I8: return "I8";
-    case DBTYPE_UI8: return "UI8";
-    case DBTYPE_GUID: return "GUID";
-    case DBTYPE_BYTES: return "BYTES";
-    case DBTYPE_STR: return "STR";
-    case DBTYPE_WSTR: return "WSTR";
-    case DBTYPE_NUMERIC: return "NUMERIC";
-    case DBTYPE_UDT: return "UDT";
-    case DBTYPE_DBDATE: return "DBDATE";
-    case DBTYPE_DBTIME: return "DBTIME";
-    case DBTYPE_DBTIMESTAMP: return "DBTIMESTAMP";
-    default: return "UNKNOWN(" + std::to_string(type) + ")";
-    }
-}
-
 std::string MSOLAPUtils::SanitizeColumnName(const std::wstring &name) {
     std::string result;
     result.reserve(name.size());

@@ -1,8 +1,177 @@
 #include "msolap_utils.hpp"
-#include <comdef.h>
+
 namespace duckdb {
 
-std::string GetErrorMessage(HRESULT hr) {
+std::string MSOLAPUtils::DBTypeToString(DBTYPE type) {
+    switch (type) {
+    case DBTYPE_EMPTY: return "EMPTY";
+    case DBTYPE_NULL: return "NULL";
+    case DBTYPE_I2: return "I2";
+    case DBTYPE_I4: return "I4";
+    case DBTYPE_R4: return "R4";
+    case DBTYPE_R8: return "R8";
+    case DBTYPE_CY: return "CY";
+    case DBTYPE_DATE: return "DATE";
+    case DBTYPE_BSTR: return "BSTR";
+    case DBTYPE_ERROR: return "ERROR";
+    case DBTYPE_BOOL: return "BOOL";
+    case DBTYPE_VARIANT: return "VARIANT";
+    case DBTYPE_DECIMAL: return "DECIMAL";
+    case DBTYPE_I1: return "I1";
+    case DBTYPE_UI1: return "UI1";
+    case DBTYPE_UI2: return "UI2";
+    case DBTYPE_UI4: return "UI4";
+    case DBTYPE_I8: return "I8";
+    case DBTYPE_UI8: return "UI8";
+    case DBTYPE_GUID: return "GUID";
+    case DBTYPE_BYTES: return "BYTES";
+    case DBTYPE_STR: return "STR";
+    case DBTYPE_WSTR: return "WSTR";
+    case DBTYPE_NUMERIC: return "NUMERIC";
+    case DBTYPE_UDT: return "UDT";
+    case DBTYPE_DBDATE: return "DBDATE";
+    case DBTYPE_DBTIME: return "DBTIME";
+    case DBTYPE_DBTIMESTAMP: return "DBTIMESTAMP";
+    default: return "UNKNOWN(" + std::to_string(type) + ")";
+    }
+}
+
+std::string MSOLAPUtils::SanitizeColumnName(const std::wstring &name) {
+    std::string result;
+    result.reserve(name.size());
+    
+    for (size_t i = 0; i < name.size(); i++) {
+        // Replace brackets with underscores as required
+        if (name[i] == L'[' || name[i] == L']') {
+            result += '_';
+        } else if (name[i] <= 255) {
+            // Convert to ASCII if possible
+            result += static_cast<char>(name[i]);
+        } else {
+            // Replace non-ASCII with underscore
+            result += '_';
+        }
+    }
+    
+    return result;
+}
+
+Value MSOLAPUtils::ConvertVariantToValue(VARIANT* pVar) {
+    if (!pVar) {
+        return Value();
+    }
+    
+    switch (pVar->vt) {
+    case VT_NULL:
+    case VT_EMPTY:
+        return Value();
+    case VT_I2:
+        return Value::SMALLINT(pVar->iVal);
+    case VT_I4:
+        return Value::INTEGER(pVar->lVal);
+    case VT_I8:
+        return Value::BIGINT(pVar->llVal);
+    case VT_R4:
+        return Value::FLOAT(pVar->fltVal);
+    case VT_R8:
+        return Value::DOUBLE(pVar->dblVal);
+    case VT_BOOL:
+        return Value::BOOLEAN(pVar->boolVal != 0);
+    case VT_BSTR:
+        if (pVar->bstrVal) {
+            // Convert wide string to UTF8
+            std::wstring wstr(pVar->bstrVal);
+            std::string utf8_str;
+            try {
+                utf8_str = WindowsUtil::UnicodeToUTF8(wstr.c_str());
+            } catch (...) {
+                // Fallback to direct conversion on error
+                utf8_str = std::string(wstr.begin(), wstr.end());
+            }
+            return Value(utf8_str);
+        } else {
+            return Value("");
+        }
+    case VT_DATE: {
+        date_t date_val = date_t(0); // Initialize with epoch
+        try {
+            // Convert OLE automation date to DuckDB date
+            time_t epoch_seconds = (time_t)((pVar->date - 25569) * 86400); // 25569 is days between 1899-12-30 and 1970-01-01
+            date_val = Date::EpochToDate(epoch_seconds);
+        } catch (...) {
+            // Return default date on error
+        }
+        return Value::DATE(date_val);
+    }
+    case VT_CY: {
+        // Currency is a 64-bit integer scaled by 10,000
+        int64_t scaled_value = ((int64_t)pVar->cyVal.Hi) << 32 | pVar->cyVal.Lo;
+        double value = scaled_value / 10000.0;
+        return Value::DOUBLE(value);
+    }
+    default:
+        // For types we can't handle well, convert to string
+        try {
+            VARIANT varStr;
+            VariantInit(&varStr);
+            if (SUCCEEDED(VariantChangeType(&varStr, pVar, 0, VT_BSTR))) {
+                std::wstring wstr(varStr.bstrVal ? varStr.bstrVal : L"");
+                std::string str;
+                try {
+                    str = WindowsUtil::UnicodeToUTF8(wstr.c_str());
+                } catch (...) {
+                    str = std::string(wstr.begin(), wstr.end());
+                }
+                VariantClear(&varStr);
+                return Value(str);
+            }
+            VariantClear(&varStr);
+        } catch (...) {
+            // Fallback to empty string on conversion error
+        }
+        return Value("");
+    }
+}
+
+LogicalType MSOLAPUtils::GetLogicalTypeFromDBTYPE(DBTYPE type) {
+    switch (type) {
+    case DBTYPE_BOOL:
+        return LogicalType::BOOLEAN;
+    case DBTYPE_I1:
+    case DBTYPE_UI1:
+        return LogicalType::TINYINT;
+    case DBTYPE_I2:
+    case DBTYPE_UI2:
+        return LogicalType::SMALLINT;
+    case DBTYPE_I4:
+    case DBTYPE_UI4:
+        return LogicalType::INTEGER;
+    case DBTYPE_I8:
+    case DBTYPE_UI8:
+        return LogicalType::BIGINT;
+    case DBTYPE_R4:
+        return LogicalType::FLOAT;
+    case DBTYPE_R8:
+    case DBTYPE_DECIMAL:
+    case DBTYPE_NUMERIC:
+    case DBTYPE_CY:
+        return LogicalType::DOUBLE;
+    case DBTYPE_DATE:
+    case DBTYPE_DBDATE:
+        return LogicalType::DATE;
+    case DBTYPE_DBTIME:
+    case DBTYPE_DBTIMESTAMP:
+        return LogicalType::TIMESTAMP;
+    case DBTYPE_GUID:
+    case DBTYPE_WSTR:
+    case DBTYPE_STR:
+    case DBTYPE_BSTR:
+    default:
+        return LogicalType::VARCHAR;
+    }
+}
+
+std::string MSOLAPUtils::GetErrorMessage(HRESULT hr) {
     _com_error err(hr);
     LPCTSTR errMsg = err.ErrorMessage();
     
@@ -20,382 +189,5 @@ std::string GetErrorMessage(HRESULT hr) {
     #endif
 }
 
-std::string BSTRToString(BSTR bstr) {
-    // MSOLAP_LOG("Converting BSTR to string");
-    if (!bstr) {
-        // MSOLAP_LOG("BSTR is null, returning empty string");
-        return "";
-    }
-    
-    try {
-        // Convert using safe methods that handle null termination properly
-        int wslen = ::SysStringLen(bstr);
-        
-        // Sanity check
-        if (wslen <= 0 || wslen > 10000) {
-            return "Column_unknown";
-        }
-        
-        // Create a proper C++ wstring (handles null characters correctly)
-        std::wstring wstr(bstr, wslen);
-        
-        // Use WideCharToMultiByte more carefully
-        int bufferSize = ::WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), wstr.length(), nullptr, 0, nullptr, nullptr);
-        
-        if (bufferSize <= 0) {
-            return "Column_unknown";
-        }
-        
-        std::string result(bufferSize, 0);
-        ::WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), wstr.length(), &result[0], bufferSize, nullptr, nullptr);
-        
-        // Clean the string - remove any non-printable characters 
-        result.erase(
-            std::remove_if(result.begin(), result.end(), 
-                [](unsigned char c) { return c < 32 || c > 126; }
-            ), 
-            result.end()
-        );
-        
-        return result;
-    } catch (...) {
-        return "Column_unknown";
-    }
-}
-
-BSTR StringToBSTR(const std::string& str) {
-    // Convert std::string to BSTR
-    int wslen = ::MultiByteToWideChar(CP_ACP, 0, str.c_str(), str.length(), NULL, 0);
-    BSTR wsdata = ::SysAllocStringLen(NULL, wslen);
-    ::MultiByteToWideChar(CP_ACP, 0, str.c_str(), str.length(), wsdata, wslen);
-    return wsdata;
-}
-
-int64_t ConvertVariantToInt64(VARIANT* var) {
-    if (!var) {
-        return 0;
-    }
-    
-    switch (var->vt) {
-        case VT_I2:
-            return var->iVal;
-        case VT_I4:
-            return var->lVal;
-        case VT_I8:
-            return var->llVal;
-        case VT_UI2:
-            return var->uiVal;
-        case VT_UI4:
-            return var->ulVal;
-        case VT_UI8:
-            return static_cast<int64_t>(var->ullVal);
-        case VT_INT:
-            return var->intVal;
-        case VT_UINT:
-            return var->uintVal;
-        case VT_R4:
-            return static_cast<int64_t>(var->fltVal);
-        case VT_R8:
-            return static_cast<int64_t>(var->dblVal);
-        case VT_BOOL:
-            return var->boolVal ? 1 : 0;
-        case VT_BSTR: {
-            try {
-                return std::stoll(BSTRToString(var->bstrVal));
-            } catch (...) {
-                return 0;
-            }
-        }
-        default:
-            return 0;
-    }
-}
-
-double ConvertVariantToDouble(VARIANT* var) {
-    if (!var) {
-        return 0.0;
-    }
-    
-    switch (var->vt) {
-        case VT_I2:
-            return var->iVal;
-        case VT_I4:
-            return var->lVal;
-        case VT_I8:
-            return static_cast<double>(var->llVal);
-        case VT_UI2:
-            return var->uiVal;
-        case VT_UI4:
-            return var->ulVal;
-        case VT_UI8:
-            return static_cast<double>(var->ullVal);
-        case VT_INT:
-            return var->intVal;
-        case VT_UINT:
-            return var->uintVal;
-        case VT_R4:
-            return var->fltVal;
-        case VT_R8:
-            return var->dblVal;
-        case VT_CY:
-            return static_cast<double>(var->cyVal.int64) / 10000.0;
-        case VT_BOOL:
-            return var->boolVal ? 1.0 : 0.0;
-        case VT_BSTR: {
-            try {
-                return std::stod(BSTRToString(var->bstrVal));
-            } catch (...) {
-                return 0.0;
-            }
-        }
-        default:
-            return 0.0;
-    }
-}
-
-string_t ConvertVariantToString(VARIANT* var, Vector& result_vector) {
-    if (!var) {
-        return string_t();
-    }
-    
-    std::string result;
-    
-    switch (var->vt) {
-        case VT_NULL:
-            return string_t();
-        case VT_EMPTY:
-            return string_t();
-        case VT_I2:
-            result = std::to_string(var->iVal);
-            break;
-        case VT_I4:
-            result = std::to_string(var->lVal);
-            break;
-        case VT_I8:
-            result = std::to_string(var->llVal);
-            break;
-        case VT_UI2:
-            result = std::to_string(var->uiVal);
-            break;
-        case VT_UI4:
-            result = std::to_string(var->ulVal);
-            break;
-        case VT_UI8:
-            result = std::to_string(var->ullVal);
-            break;
-        case VT_INT:
-            result = std::to_string(var->intVal);
-            break;
-        case VT_UINT:
-            result = std::to_string(var->uintVal);
-            break;
-        case VT_R4:
-            result = std::to_string(var->fltVal);
-            break;
-        case VT_R8:
-            result = std::to_string(var->dblVal);
-            break;
-        case VT_BOOL:
-            result = var->boolVal ? "true" : "false";
-            break;
-        case VT_BSTR:
-            result = BSTRToString(var->bstrVal);
-            break;
-        case VT_DATE: {
-            // Convert OLE date to string
-            SYSTEMTIME sysTime;
-            VariantTimeToSystemTime(var->date, &sysTime);
-            char buffer[128];
-            sprintf_s(buffer, sizeof(buffer), "%04d-%02d-%02d %02d:%02d:%02d", 
-                    sysTime.wYear, sysTime.wMonth, sysTime.wDay,
-                    sysTime.wHour, sysTime.wMinute, sysTime.wSecond);
-            result = buffer;
-            break;
-        }
-        default:
-            result = "[Unsupported Type]";
-            break;
-    }
-    
-    return StringVector::AddString(result_vector, result);
-}
-
-timestamp_t ConvertVariantToTimestamp(VARIANT* var) {
-    if (!var || var->vt != VT_DATE) {
-        return timestamp_t(0);
-    }
-    
-    // Convert OLE date to timestamp
-    SYSTEMTIME sysTime;
-    VariantTimeToSystemTime(var->date, &sysTime);
-    
-    // Use DuckDB's date/time constructors 
-    int32_t year = sysTime.wYear;
-    int32_t month = sysTime.wMonth;
-    int32_t day = sysTime.wDay;
-    int32_t hour = sysTime.wHour;
-    int32_t minute = sysTime.wMinute;
-    int32_t second = sysTime.wSecond;
-    int32_t microsecond = 0;
-    
-    date_t date = Date::FromDate(year, month, day);
-    
-    // Create time struct directly without using constructor with 4 arguments
-    dtime_t time = dtime_t(hour * Interval::MICROS_PER_HOUR + 
-                           minute * Interval::MICROS_PER_MINUTE + 
-                           second * Interval::MICROS_PER_SEC +
-                           microsecond);
-    
-    return Timestamp::FromDatetime(date, time);
-}
-
-bool ConvertVariantToBool(VARIANT* var) {
-    if (!var) {
-        return false;
-    }
-    
-    switch (var->vt) {
-        case VT_BOOL:
-            return var->boolVal != VARIANT_FALSE;
-        case VT_I2:
-        case VT_I4:
-        case VT_I8:
-        case VT_UI2:
-        case VT_UI4:
-        case VT_UI8:
-        case VT_INT:
-        case VT_UINT:
-            return ConvertVariantToInt64(var) != 0;
-        case VT_R4:
-        case VT_R8:
-            return ConvertVariantToDouble(var) != 0.0;
-        case VT_BSTR: {
-            std::string str = BSTRToString(var->bstrVal);
-            return !str.empty() && (str == "1" || str == "true" || str == "TRUE" || str == "True");
-        }
-        default:
-            return false;
-    }
-}
-
-LogicalType DBTypeToLogicalType(DBTYPE dbType) {
-    try {
-        LogicalType result;
-        
-        switch (dbType) {
-            case DBTYPE_I2:
-                result = LogicalType::SMALLINT;
-                break;
-            case DBTYPE_I4:
-                result = LogicalType::INTEGER;
-                break;
-            case DBTYPE_I8:
-                result = LogicalType::BIGINT;
-                break;
-            case DBTYPE_R4:
-                result = LogicalType::FLOAT;
-                break;
-            case DBTYPE_R8:
-                result = LogicalType::DOUBLE;
-                break;
-            case DBTYPE_BOOL:
-                result = LogicalType::BOOLEAN;
-                break;
-            case DBTYPE_BSTR:
-            case DBTYPE_STR:
-            case DBTYPE_WSTR:
-                result = LogicalType::VARCHAR;
-                break;
-            case DBTYPE_CY:
-                result = LogicalType::DECIMAL(19, 4);
-                break;
-            case DBTYPE_DATE:
-            case DBTYPE_DBDATE:
-            case DBTYPE_DBTIME:
-            case DBTYPE_DBTIMESTAMP:
-                result = LogicalType::TIMESTAMP;
-                break;
-            default:
-                result = LogicalType::VARCHAR;
-                break;
-        }
-        
-        // MSOLAP_LOG("Converted to LogicalType: " + result.ToString());
-        return result;
-    } catch (const std::exception& e) {
-        // MSOLAP_LOG("Exception in DBTypeToLogicalType: " + std::string(e.what()));
-        // Default to VARCHAR for any exception
-        return LogicalType::VARCHAR;
-    } catch (...) {
-        return LogicalType::VARCHAR;
-    }
-}
-
-std::string SanitizeColumnName(const std::string& name) {
-    
-    try {
-        if (name.empty()) {
-            return "Column_empty";
-        }
-        
-        std::string sanitized = name;
-        
-        // Replace problematic characters with underscores
-        for (size_t i = 0; i < sanitized.length(); i++) {
-            char c = sanitized[i];
-            if (c == '[' || c == ']' || c == ' ' || c == '.' || c == ',' || 
-                c == ';' || c == ':' || c == '/' || c == '\\' || c == '?' || 
-                c == '*' || c == '+' || c == '=' || c == '@' || c == '!' || 
-                c == '%' || c == '&' || c == '(' || c == ')' || c == '<' || 
-                c == '>' || c == '{' || c == '}' || c == '|' || c == '^' || 
-                c == '~' || c == '`' || c == '\'' || c == '"' || c == '-') {
-                sanitized[i] = '_';
-            }
-        }
-        
-        // Truncate if too long to avoid issues
-        if (sanitized.length() > 64) {
-            sanitized = sanitized.substr(0, 64);
-        }
-        
-        return sanitized;
-    } catch (const std::exception& e) {
-        return "Column_error";
-    } catch (...) {
-        return "Column_error";
-    }
-}
-
-COMInitializer::COMInitializer() : initialized(false) {
-    HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (SUCCEEDED(hr) || hr == S_FALSE) {
-        initialized = true;
-    }
-}
-
-COMInitializer::~COMInitializer() {
-    if (initialized) {
-        CoUninitialize();
-    }
-}
-
-bool COMInitializer::IsInitialized() const {
-    return initialized;
-}
-
-MSOLAPException::MSOLAPException(const std::string& message) : message(message) {}
-
-MSOLAPException::MSOLAPException(HRESULT hr, const std::string& context) {
-    std::string errMsg = GetErrorMessage(hr);
-    if (!context.empty()) {
-        message = context + ": " + errMsg + " (HRESULT: 0x" + std::to_string(hr) + ")";
-    } else {
-        message = errMsg + " (HRESULT: 0x" + std::to_string(hr) + ")";
-    }
-}
-
-const char* MSOLAPException::what() const noexcept {
-    return message.c_str();
-}
 
 } // namespace duckdb

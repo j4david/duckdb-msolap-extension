@@ -2,6 +2,7 @@
 
 #include "msolap_extension.hpp"
 #include "msolap_scanner.hpp"
+#include "msolap_utils.hpp"
 #include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 

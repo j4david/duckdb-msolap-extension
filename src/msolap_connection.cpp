@@ -70,14 +70,14 @@ void MSOLAPConnection::ParseConnectionString(const std::string &connection_strin
     }
     
     // Extract server and database
-    auto server_it = properties.find("Server");
+    auto server_it = properties.find("Data Source");
     if (server_it != properties.end()) {
         server_name = WindowsUtil::UTF8ToUnicode(server_it->second.c_str());
     } else {
         server_name = L"localhost";
     }
     
-    auto db_it = properties.find("Database");
+    auto db_it = properties.find("Catalog");
     if (db_it != properties.end()) {
         database_name = WindowsUtil::UTF8ToUnicode(db_it->second.c_str());
     } else {

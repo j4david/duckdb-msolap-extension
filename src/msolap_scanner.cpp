@@ -164,61 +164,79 @@ static void MSOLAPScan(ClientContext &context, TableFunctionInput &data, DataChu
         return;
     }
     
-    // Process rows
-    HROW hRow;
-    HROW* pRows = &hRow;
+    // Process rows in batches
+    const DBROWCOUNT batch_size = STANDARD_VECTOR_SIZE;
+    HROW* pRows = new HROW[batch_size];
     DBCOUNTITEM cRowsObtained = 0;
-    idx_t output_index = 0;
     
-    while (output_index < STANDARD_VECTOR_SIZE) {
-        HRESULT hr = state.rowset->GetNextRows(0, 0, 1, &cRowsObtained, &pRows);
-        if (FAILED(hr) || cRowsObtained == 0) {
-            state.done = true;
-            break;
-        }
-        
+    HRESULT hr = state.rowset->GetNextRows(0, 0, batch_size, &cRowsObtained, &pRows);
+    if (FAILED(hr)) {
+        delete[] pRows;
+        throw std::runtime_error("Failed to get rows: " + MSOLAPUtils::GetErrorMessage(hr));
+    }
+    
+    if (cRowsObtained == 0) {
+        state.done = true;
+        delete[] pRows;
+        return;
+    }
+    
+    // Prepare vectors for each column type
+    const idx_t col_count = output.ColumnCount();
+    std::vector<std::vector<Value>> column_values(col_count);
+    for (idx_t col = 0; col < col_count; col++) {
+        column_values[col].reserve(cRowsObtained);
+    }
+    
+    // Get data for all rows
+    for (DBCOUNTITEM i = 0; i < cRowsObtained; i++) {
         // Clear the buffer before getting new data
         memset(state.row_data, 0, state.row_size);
         
         // Get the row data
-        hr = state.rowset->GetData(hRow, state.haccessor, state.row_data);
+        hr = state.rowset->GetData(pRows[i], state.haccessor, state.row_data);
         if (FAILED(hr)) {
-            // Release the row handle
-            state.rowset->ReleaseRows(1, pRows, NULL, NULL, NULL);
-            throw std::runtime_error("Failed to get row data: " + MSOLAPUtils::GetErrorMessage(hr));
+            // On error, add NULL values for all columns
+            for (idx_t col = 0; col < col_count; col++) {
+                column_values[col].push_back(Value());
+            }
+            continue;
         }
         
-        // Process each column data
-        for (DBORDINAL i = 0; i < output.ColumnCount(); i++) {
-            auto &out_vec = output.data[i];
-            
+        // Extract values for each column
+        for (idx_t col = 0; col < col_count; col++) {
             // Get the COLUMNDATA structure for this column
-            ColumnData* pColData = (ColumnData*)(state.row_data + (i * sizeof(ColumnData)));
+            ColumnData* pColData = (ColumnData*)(state.row_data + (col * sizeof(ColumnData)));
             
-            // Check the status
             if (pColData->dwStatus == DBSTATUS_S_OK) {
-                // Convert VARIANT to DuckDB value and set in the vector
+                // Convert VARIANT to DuckDB value
                 Value val = MSOLAPUtils::ConvertVariantToValue(&(pColData->var));
-                out_vec.SetValue(output_index, val);
+                column_values[col].push_back(val);
                 
                 // Clear variant to avoid memory leaks
                 VariantClear(&(pColData->var));
-            } else if (pColData->dwStatus == DBSTATUS_S_ISNULL) {
-                // Set null value
-                out_vec.SetValue(output_index, Value());
             } else {
-                // Set default value on error
-                out_vec.SetValue(output_index, Value());
+                // Add NULL for NULL or error values
+                column_values[col].push_back(Value());
             }
         }
-        
-        // Release the row handle
-        state.rowset->ReleaseRows(1, pRows, NULL, NULL, NULL);
-        
-        output_index++;
     }
     
-    output.SetCardinality(output_index);
+    // Release the row handles
+    state.rowset->ReleaseRows(cRowsObtained, pRows, NULL, NULL, NULL);
+    delete[] pRows;
+    
+    // Now use bulk operations to populate the output vectors
+    for (idx_t col = 0; col < col_count; col++) {
+        auto &out_vec = output.data[col];
+        
+        // For each column, set all values at once
+        for (idx_t row = 0; row < column_values[col].size(); row++) {
+            out_vec.SetValue(row, column_values[col][row]);
+        }
+    }
+    
+    output.SetCardinality(cRowsObtained);
 }
 
 static InsertionOrderPreservingMap<string> MSOLAPToString(TableFunctionToStringInput &input) {

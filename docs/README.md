@@ -60,7 +60,19 @@ The extension provides one main function:
 
 1. `msolap(connection_string, dax_query)` - Execute a custom DAX query
 
-The expected `connection_string` format: _"Data Source=localhost;Catalog=AdventureWorks"_
+### Connection String Format
+
+The expected `connection_string` format: _"Data Source=localhost;Catalog=AdventureWorks"_ with both `Data Source` and `Catalog` mandatory.
+
+Supported `Data Source` types:
+
+- localhost:{port}
+- {server}
+- {server}\{instance}
+- powerbi://api.powerbi.com/v1.0/myorg
+- powerbi://api.powerbi.com/v1.0/{tenant}/{workspace}
+
+
 
 ## Limitations
 

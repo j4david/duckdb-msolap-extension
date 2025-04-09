@@ -3,23 +3,15 @@
 namespace duckdb {
 
 std::string MSOLAPUtils::SanitizeColumnName(const std::wstring &name) {
-    std::string result;
-    result.reserve(name.size());
-    
-    for (size_t i = 0; i < name.size(); i++) {
-        // Replace brackets with underscores as required
-        if (name[i] == L'[' || name[i] == L']') {
-            result += '_';
-        } else if (name[i] <= 255) {
-            // Convert to ASCII if possible
-            result += static_cast<char>(name[i]);
-        } else {
-            // Replace non-ASCII with underscore
-            result += '_';
+    std::wstring sanitized = name;
+    for (size_t i = 0; i < sanitized.size(); i++) {
+        if (sanitized[i] == L'[' || sanitized[i] == L']') {
+            sanitized[i] = L'_';
         }
     }
     
-    return result;
+    // Convert the entire string to UTF-8 properly
+    return WindowsUtil::UnicodeToUTF8(sanitized.c_str());
 }
 
 Value MSOLAPUtils::ConvertVariantToValue(VARIANT* pVar) {

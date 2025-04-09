@@ -1,0 +1,25 @@
+# name: test/sql/msolap_table_constructor.test
+# description: test msolap extension with DAX table constructor
+# group: [msolap]
+
+# Require statement will ensure this test is run with the extension loaded
+require msolap
+
+# Test German special characters in column names and contents
+query II
+FROM msolap(
+    'Provider=MSOLAP;Data Source=localhost:54043;Catalog=53e9bf8c-d0e3-49c8-818c-3505753645bd',
+    'EVALUATE
+     DATATABLE( "🦆", STRING, "äöü", STRING, 
+        {    
+            {"Duck", "DB"},
+            {"Straße", "äöü"},
+            {"München", "Köln"},
+            {"Jürgen", "Größe"}
+        })'
+);
+----
+Straße	äöü
+München	Köln
+Jürgen	Größe
+

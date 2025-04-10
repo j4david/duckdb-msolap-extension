@@ -5,10 +5,12 @@
 # Require statement will ensure this test is run with the extension loaded
 require msolap
 
+require-env MSOLAP_CONNECTION_STRING
+
 # Test German special characters in column names and contents
 query II
 FROM msolap(
-    'Provider=MSOLAP;Data Source=localhost:54043;Catalog=53e9bf8c-d0e3-49c8-818c-3505753645bd',
+    '${MSOLAP_CONNECTION_STRING}',
     'EVALUATE
      DATATABLE( "🦆", STRING, "äöü", STRING, 
         {    
@@ -28,7 +30,7 @@ query I
 SELECT column_name FROM 
 (DESCRIBE 
 FROM msolap(
-    'Provider=MSOLAP;Data Source=localhost:50604;Catalog=872aef79-986f-450c-a0fd-719fd7bbc143',
+    '${MSOLAP_CONNECTION_STRING}',
     'EVALUATE datatable("a",integer,"äöü",string,"🦆",string,
     {    
         {1, "Duck","DB"}

@@ -23,3 +23,18 @@ Straße	äöü
 München	Köln
 Jürgen	Größe
 
+# Test German special characters and Emojis in column names
+query I
+SELECT column_name FROM 
+(DESCRIBE 
+FROM msolap(
+    'Provider=MSOLAP;Data Source=localhost:50604;Catalog=872aef79-986f-450c-a0fd-719fd7bbc143',
+    'EVALUATE datatable("a",integer,"äöü",string,"🦆",string,
+    {    
+        {1, "Duck","DB"}
+    })'
+));
+----
+_a_
+_äöü_
+_🦆_

@@ -6,6 +6,27 @@
 
 namespace duckdb {
 
+// Function declarations
+static void LoadInternal(DatabaseInstance &instance);
+
+// Data structure to store the connection and query parameters
+struct MSOLAPDummyData : public TableFunctionData {
+    std::string connection_string;
+    std::string dax_query;
+};
+
+// Custom state class with the constructor we need
+struct MSOLAPDummyGlobalState : public GlobalTableFunctionState {
+    idx_t max_threads;
+    
+    explicit MSOLAPDummyGlobalState(idx_t max_threads) : max_threads(max_threads) {}
+    
+    idx_t MaxThreads() const override {
+        return max_threads;
+    }
+};
+
+// Extension class definition
 class MsolapExtension : public Extension {
 public:
     void Load(DuckDB& db) override {
@@ -23,12 +44,6 @@ public:
         return "";
 #endif
     }
-};
-
-// Data structure to store the connection and query parameters
-struct MSOLAPDummyData : public TableFunctionData {
-    std::string connection_string;
-    std::string dax_query;
 };
 
 // Scan function that returns a message about Windows-only support
@@ -61,7 +76,7 @@ static unique_ptr<FunctionData> MSOLAPUnsupportedBind(ClientContext &context, Ta
 // Initialize global state
 static unique_ptr<GlobalTableFunctionState> MSOLAPUnsupportedInitGlobalState(ClientContext &context,
                                                               TableFunctionInitInput &input) {
-    return make_uniq<GlobalTableFunctionState>(1);
+    return make_uniq<MSOLAPDummyGlobalState>(1);
 }
 
 // Local state initialization is a no-op

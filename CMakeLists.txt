@@ -13,28 +13,7 @@ include_directories(src/include)
 
 # Add COM/OLE DB dependencies for Windows
 if(WIN32)
-  # Extended list of libraries for OLE DB support
-  if(MINGW)
-    # MinGW specific libraries
-    set(COM_LIBS 
-        ole32 
-        oleaut32 
-        uuid
-        # Add OLE DB related libraries
-        msdaguid    # Contains OLE DB GUIDs
-        # oledbguid   # Alternative/additional GUID library (if available)
-    )
-  else()
-    # MSVC or other Windows compilers
-    set(COM_LIBS 
-        ole32 
-        oleaut32 
-        uuid
-        oledb       # OLE DB library
-        msdasc      # Microsoft Data Access Components
-    )
-  endif()
-  
+  set(COM_LIBS ole32 oleaut32 uuid)
   set(EXTENSION_SOURCES 
       src/msolap_connection.cpp
       src/msolap_scanner.cpp
@@ -55,7 +34,6 @@ set(PARAMETERS "-warnings")
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
 if(WIN32)
-  target_link_libraries(${EXTENSION_NAME} ${COM_LIBS})
   target_link_libraries(${LOADABLE_EXTENSION_NAME} ${COM_LIBS})
 endif()
 
@@ -64,4 +42,3 @@ install(
   EXPORT "${DUCKDB_EXPORT_SET}"
   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
   ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
-

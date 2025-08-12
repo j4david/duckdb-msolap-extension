@@ -1,3 +1,12 @@
+// At the top of msolap_connection.cpp
+#ifdef _WIN32
+#include "msolap_guids.h"  // Include this FIRST
+#include <windows.h>
+#include <oledb.h>
+#include <msdasc.h>
+// ... other includes
+#endif
+
 #include "msolap_connection.hpp"
 #include "msolap_utils.hpp"
 #include <stdexcept>
@@ -7,7 +16,7 @@ namespace duckdb {
 // Initialize static member
 bool MSOLAPConnection::com_initialized = false;
 
-MSOLAPConnection::MSOLAPConnection() 
+MSOLAPConnection::MSOLAPConnection()
     : pIDBInitialize(nullptr), pIDBCreateCommand(nullptr) {
 }
 
@@ -38,16 +47,16 @@ void MSOLAPConnection::InitializeCOM() {
 void MSOLAPConnection::ParseConnectionString(const std::string &connection_string) {
     // Simple parsing of connection string
     // Format expected: "Data Source=localhost:61324;Catalog=0ec50266-bdf5-4582-bc8c-82584866bcb7"
-    
+
     std::map<std::string, std::string> properties;
-    
+
     size_t pos = 0;
     std::string token;
     std::string str = connection_string;
-    
+
     while ((pos = str.find(';')) != std::string::npos) {
         token = str.substr(0, pos);
-        
+
         // Find key-value separator
         size_t sep_pos = token.find('=');
         if (sep_pos != std::string::npos) {
@@ -55,10 +64,10 @@ void MSOLAPConnection::ParseConnectionString(const std::string &connection_strin
             std::string value = token.substr(sep_pos + 1);
             properties[key] = value;
         }
-        
+
         str.erase(0, pos + 1);
     }
-    
+
     // Handle the last token after the last semicolon
     if (!str.empty()) {
         size_t sep_pos = str.find('=');
@@ -68,7 +77,7 @@ void MSOLAPConnection::ParseConnectionString(const std::string &connection_strin
             properties[key] = value;
         }
     }
-    
+
     // Extract server and database
     auto server_it = properties.find("Data Source");
     if (server_it != properties.end()) {
@@ -76,7 +85,7 @@ void MSOLAPConnection::ParseConnectionString(const std::string &connection_strin
     } else {
         server_name = L"localhost";
     }
-    
+
     auto db_it = properties.find("Catalog");
     if (db_it != properties.end()) {
         database_name = WindowsUtil::UTF8ToUnicode(db_it->second.c_str());
@@ -87,21 +96,21 @@ void MSOLAPConnection::ParseConnectionString(const std::string &connection_strin
 
 MSOLAPConnection MSOLAPConnection::Connect(const std::string &connection_string) {
     MSOLAPConnection connection;
-    
+
     // Initialize COM
     InitializeCOM();
-    
+
     // Parse connection string
     connection.ParseConnectionString(connection_string);
-    
+
     // Create data source
     HRESULT hr = CoCreateInstance(CLSID_MSOLAP, NULL, CLSCTX_INPROC_SERVER,
         IID_IDBInitialize, (void**)&connection.pIDBInitialize);
-        
+
     if (FAILED(hr)) {
         throw std::runtime_error("Failed to create MSOLAP provider: " + MSOLAPUtils::GetErrorMessage(hr));
     }
-    
+
     // Get the IDBProperties interface
     IDBProperties* pIDBProperties = NULL;
     hr = connection.pIDBInitialize->QueryInterface(IID_IDBProperties, (void**)&pIDBProperties);
@@ -109,7 +118,7 @@ MSOLAPConnection MSOLAPConnection::Connect(const std::string &connection_string)
         MSOLAPUtils::SafeRelease(&connection.pIDBInitialize);
         throw std::runtime_error("Failed to get IDBProperties: " + MSOLAPUtils::GetErrorMessage(hr));
     }
-    
+
     // Set the properties for the connection
     DBPROP dbProps[3];
     DBPROPSET dbPropSet;
@@ -146,7 +155,7 @@ MSOLAPConnection MSOLAPConnection::Connect(const std::string &connection_string)
     // Free the BSTR allocations
     SysFreeString(dbProps[0].vValue.bstrVal);
     SysFreeString(dbProps[1].vValue.bstrVal);
-    
+
     if (FAILED(hr)) {
         MSOLAPUtils::SafeRelease(&pIDBProperties);
         MSOLAPUtils::SafeRelease(&connection.pIDBInitialize);
@@ -176,7 +185,7 @@ MSOLAPConnection MSOLAPConnection::Connect(const std::string &connection_string)
         MSOLAPUtils::SafeRelease(&connection.pIDBInitialize);
         throw std::runtime_error("Failed to create session: " + MSOLAPUtils::GetErrorMessage(hr));
     }
-    
+
     return connection;
 }
 
@@ -184,10 +193,10 @@ IRowset* MSOLAPConnection::ExecuteQuery(const std::string &dax_query) {
     if (!IsOpen()) {
         throw std::runtime_error("Connection is not open");
     }
-    
+
     // Convert query to wide string
     std::wstring wquery = WindowsUtil::UTF8ToUnicode(dax_query.c_str());
-    
+
     // Create command object
     ICommand* pICommand = NULL;
     HRESULT hr = pIDBCreateCommand->CreateCommand(NULL, IID_ICommand, (IUnknown**)&pICommand);
@@ -233,7 +242,7 @@ IRowset* MSOLAPConnection::ExecuteQuery(const std::string &dax_query) {
 
         // Set the properties
         pICommandProperties->SetProperties(1, &dbPropSet);
-        
+
         MSOLAPUtils::SafeRelease(&pICommandProperties);
     }
 
@@ -246,7 +255,7 @@ IRowset* MSOLAPConnection::ExecuteQuery(const std::string &dax_query) {
     if (FAILED(hr)) {
         throw std::runtime_error("Query execution failed: " + MSOLAPUtils::GetErrorMessage(hr));
     }
-    
+
     return pIRowset;
 }
 
@@ -254,7 +263,7 @@ bool MSOLAPConnection::GetColumnInfo(IRowset *rowset, std::vector<std::string> &
     if (!rowset) {
         return false;
     }
-    
+
     // Get column information using IColumnsInfo
     IColumnsInfo* pIColumnsInfo = NULL;
     HRESULT hr = rowset->QueryInterface(IID_IColumnsInfo, (void**)&pIColumnsInfo);
@@ -276,7 +285,7 @@ bool MSOLAPConnection::GetColumnInfo(IRowset *rowset, std::vector<std::string> &
     // Process column information
     names.clear();
     types.clear();
-    
+
     for (DBORDINAL i = 0; i < cColumns; i++) {
         std::string column_name;
         if (pColumnInfo[i].pwszName) {
@@ -285,16 +294,16 @@ bool MSOLAPConnection::GetColumnInfo(IRowset *rowset, std::vector<std::string> &
         } else {
             column_name = "Column" + std::to_string(i);
         }
-        
+
         names.push_back(column_name);
         types.push_back(MSOLAPUtils::GetLogicalTypeFromDBTYPE(pColumnInfo[i].wType));
     }
-    
+
     // Clean up
     CoTaskMemFree(pColumnInfo);
     CoTaskMemFree(pStringsBuffer);
     MSOLAPUtils::SafeRelease(&pIColumnsInfo);
-    
+
     return true;
 }
 
@@ -306,7 +315,7 @@ void MSOLAPConnection::Close() {
     if (pIDBCreateCommand) {
         MSOLAPUtils::SafeRelease(&pIDBCreateCommand);
     }
-    
+
     if (pIDBInitialize) {
         pIDBInitialize->Uninitialize();
         MSOLAPUtils::SafeRelease(&pIDBInitialize);
